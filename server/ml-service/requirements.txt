@@ -1,0 +1,35 @@
+# HomeTown AR ml-service.
+# This exact combination was dry-run resolved with no conflicts, on this machine's actual
+# setup: Python 3.14, RTX 5060 (driver reporting CUDA 13.2), using the cu128 wheel index. If your
+# target machine's driver is older, switch to the cu121/cu124 index instead
+# (https://pytorch.org/get-started/locally/) — those only publish wheels up to Python 3.13, so
+# you'd also need `py -3.11`/`py -3.12` for the venv in that case; setup_and_run.ps1 already
+# tries 3.14 down to 3.11 automatically.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+
+transformers==5.19.0
+diffusers==0.41.0
+accelerate==1.15.0
+safetensors==0.8.0
+
+fastapi==0.128.0
+uvicorn[standard]==0.38.0
+pydantic==2.12.4
+requests==2.32.5
+
+pillow==12.3.0
+numpy==2.4.1
+scikit-image==0.26.0
+trimesh==5.1.1
+
+# TripoSR (vendor/TripoSR, cloned by setup_and_run.ps1) needs these to import tsr.system/tsr.utils
+# at all — note deliberately NOT installing vendor/TripoSR/requirements.txt itself, which pins
+# much older versions (Pillow 10.1.0, transformers 4.35.0, trimesh 4.0.5, ...) that conflict with
+# the pins above and mostly predate Python 3.14 wheels anyway. torchmcubes is deliberately
+# excluded too — see pipeline/torchmcubes_shim.py.
+omegaconf==2.3.0
+einops==0.8.2
+rembg[cpu]==2.0.85
+imageio[ffmpeg]==2.38.1
