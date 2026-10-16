@@ -27,6 +27,9 @@ interface SettingsState {
   /** "Share anonymous usage": ids and numbers only. Off = nothing is tracked or sent. */
   shareUsage: boolean;
   setShareUsage: (on: boolean) => void;
+  /** Use photo-generated 3D models instead of the standard proxy shapes where both are available. */
+  photoModels: boolean;
+  setPhotoModels: (on: boolean) => void;
   /** Upload the picture of a saved design (a screenshot of the AR view, which includes the room) when syncing. Off by default: a photo is also uploaded when the user shares that design. */
   /** The "how to" gesture demo is shown once per screen, then from the ? button. */
   hintsSeen: { ar?: boolean; plan?: boolean };
@@ -42,6 +45,7 @@ export const useSettings = create<SettingsState>()(
     scanned: null, setScanned: (scanned) => set({ scanned }),
     onboarded: false, preset: 'unknown', finish: (preset) => set({ onboarded: true, preset }),
     shareUsage: true, setShareUsage: (shareUsage) => set({ shareUsage }),
+    photoModels: false, setPhotoModels: (photoModels) => set({ photoModels }),
     hintsSeen: {}, markHint: (k) => set((s) => ({ hintsSeen: { ...s.hintsSeen, [k]: true } })),
     backupPhotos: false, setBackupPhotos: (backupPhotos) => set({ backupPhotos }),
   }), {

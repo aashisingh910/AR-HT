@@ -11,9 +11,9 @@ import { useWishlist } from '../store/wishlistStore';
 import { useSettings } from '../store/settingsStore';
 import { track } from '../services/events';
 import { isSaved } from '../utils/wishlist';
-import { SHOW_PRICES } from '../config';
+import { PriceTag } from '../components/Price';
 import { withUtm } from '../utils/links';
-import { colors, formatPrice } from '../theme';
+import { colors } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 export default function ItemScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'Item'>) {
@@ -34,6 +34,8 @@ export default function ItemScreen({ navigation, route }: NativeStackScreenProps
           <View style={{ flex: 1 }}>
             <Text style={s.name}>{item.name}</Text>
             <Text style={s.cat}>{item.category}{item.subcategory ? ` · ${item.subcategory}` : ''}</Text>
+            <View style={{ marginTop: 8 }}><PriceTag product={item} size="large" /></View>
+            {item.priceInr ? <Text style={s.dimLabel}>{t('price.reference')}</Text> : null}
           </View>
           <HeartButton saved={saved} onPress={() => { if (toggle(item.id)) track('wishlist_added', { id: item.id }); }} />
         </View>
@@ -42,7 +44,6 @@ export default function ItemScreen({ navigation, route }: NativeStackScreenProps
           <Text style={s.dimValue}>{sizeLabel(item)}</Text>
           {item.dimsConfidence === 'low' ? <Text style={s.warn}>This size needed guessing in HomeTown&apos;s data. Check it on hometown.in before you buy.</Text> : null}
           {item.setSize ? <Text style={s.dimLabel}>Sold as a set of {item.setSize}; the size above is for one piece.</Text> : null}
-          {SHOW_PRICES && item.priceInr ? <Text style={s.dimLabel}>Reference price {formatPrice(item.priceInr)}{item.compareAtInr ? ` (was ${formatPrice(item.compareAtInr)})` : ''}</Text> : null}
         </View>
         <FitCalculator product={item} />
         {variants.length > 0 && (

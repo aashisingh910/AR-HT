@@ -44,18 +44,21 @@ export function local({ fetchImpl = fetch, baseUrl = 'http://127.0.0.1:8077' } =
   };
   return {
     name: 'local',
-    /** @returns {Promise<string>} task id */
-    async create(imageUrl) {
-      const r = await call('/openapi/v1/image-to-3d', { method: 'POST', body: JSON.stringify({ image_url: imageUrl }) });
+    /** `meshModel`: 'triposr' (default, one photo, coloured) or 'hunyuan3d-2mv' (better shape, uncoloured; the photo is its front view).
+     * @returns {Promise<string>} task id */
+    async create(imageUrl, { meshModel = 'triposr' } = {}) {
+      const body = meshModel === 'hunyuan3d-2mv' ? { mesh_model: meshModel, image_urls: { front: imageUrl } } : { image_url: imageUrl };
+      const r = await call('/openapi/v1/image-to-3d', { method: 'POST', body: JSON.stringify(body) });
       if (!r?.result) throw new Error('local ml-service did not return a task id');
       return r.result;
     },
-    /** @returns {Promise<{status:'pending'|'running'|'done'|'failed', glbUrl?:string, error?:string, progress?:number}>} */
+    /** `elapsedS` is GPU run time only (not time spent queued behind other jobs).
+     * @returns {Promise<{status:'pending'|'running'|'done'|'failed', glbUrl?:string, error?:string, progress?:number, elapsedS?:number}>} */
     async status(taskId) {
       const r = await call(`/openapi/v1/image-to-3d/${encodeURIComponent(taskId)}`);
       const map = { PENDING: 'pending', IN_PROGRESS: 'running', SUCCEEDED: 'done', FAILED: 'failed' };
       const status = map[r.status] ?? 'running';
-      return { status, progress: r.progress, glbUrl: r.model_urls?.glb, error: status === 'failed' ? (r.task_error?.message || r.status) : undefined };
+      return { status, progress: r.progress, glbUrl: r.model_urls?.glb, elapsedS: r.elapsed_s ?? undefined, error: status === 'failed' ? (r.task_error?.message || r.status) : undefined };
     },
   };
 }
@@ -75,20 +78,43 @@ export async function waitForModel(provider, taskId, { pollMs = 8000, timeoutMs 
   }
 }
 
+/** Recreates a stale local task after the service was restarted and lost in-memory state. */
+export async function retryLocalTask({ provider, taskId, createTask, waitForTask, onRetry }) {
+  let currentTaskId = taskId;
+  for (;;) {
+    try {
+      return await waitForTask(currentTaskId);
+    } catch (e) {
+      if (e?.status !== 404 || provider.name !== 'local') throw e;
+      const staleTaskId = currentTaskId;
+      currentTaskId = await createTask();
+      onRetry?.({ staleTaskId, newTaskId: currentTaskId });
+    }
+  }
+}
+
 /**
- * Which products to model first: the products used in the sample rooms (fastest visible win), then top categories (sofas, beds, wardrobes...),
- * skipping anything that already has a model, is under size review, or is a demo item. Wall pieces are skipped (flat art does not need a model).
+ * Which products to model first: the products used in the sample rooms (fastest visible win, most used first), then the other furniture
+ * types taken in turn (one sofa, one bed, one wardrobe, ... then the next of each), so any "top N" covers every kind of room instead of
+ * being all sofas (the catalogue has 225 sofas and 44 beds). Skips anything that already has a model, is under size review, or is a demo
+ * item. Wall pieces are skipped (flat art does not need a model).
  */
 export function pickProducts(catalogue, rooms, count, exclude = new Set()) {
   const inRooms = new Map();
   for (const r of rooms) for (const p of r.pieces) inRooms.set(p.productId, (inRooms.get(p.productId) ?? 0) + 1);
-  const order = { sofa: 0, bed: 1, wardrobe: 2, 'dining-table': 3, 'tv-unit': 4, chair: 5, desk: 6, storage: 7 };
-  return catalogue
-    .filter((p) => !p.model3D && !p.sizeReview && !p.demo && p.category !== 'Wall' && p.images?.[0] && !exclude.has(p.id))
-    .map((p) => ({ p, room: inRooms.get(p.id) ? 0 : 1, rank: order[p.role] ?? 9, uses: -(inRooms.get(p.id) ?? 0) }))
-    .sort((a, b) => a.room - b.room || a.uses - b.uses || a.rank - b.rank || a.p.id.localeCompare(b.p.id))
-    .slice(0, count)
-    .map((x) => x.p);
+  const order = { sofa: 0, bed: 1, wardrobe: 2, 'dining-table': 3, 'tv-unit': 4, chair: 5, desk: 6, storage: 7, 'coffee-table': 8, 'side-table': 9 };
+  const pool = catalogue.filter((p) => !p.model3D && !p.sizeReview && !p.demo && p.category !== 'Wall' && p.images?.[0] && !exclude.has(p.id));
+  const roomPieces = pool.filter((p) => inRooms.has(p.id))
+    .sort((a, b) => inRooms.get(b.id) - inRooms.get(a.id) || (order[a.role] ?? 99) - (order[b.role] ?? 99) || a.id.localeCompare(b.id));
+  const byRole = new Map();
+  for (const p of pool.filter((x) => !inRooms.has(x.id)).sort((a, b) => a.id.localeCompare(b.id))) {
+    if (!byRole.has(p.role)) byRole.set(p.role, []);
+    byRole.get(p.role).push(p);
+  }
+  const queues = [...byRole.entries()].sort(([a], [b]) => (order[a] ?? 99) - (order[b] ?? 99) || a.localeCompare(b)).map(([, q]) => q);
+  const rest = [];
+  for (let i = 0; queues.some((q) => i < q.length); i++) for (const q of queues) if (i < q.length) rest.push(q[i]);
+  return [...roomPieces, ...rest].slice(0, count);
 }
 
 /** Best photo for 3D: the first (the studio shot). Shopify can resize on request: ask for 1024 px so the upload is small and fast. */

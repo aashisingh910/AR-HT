@@ -83,6 +83,11 @@ test('share page: renders without auth, escapes HTML, has plan SVG, OG tags, pro
   assert.ok(html.includes('https://play.example/app'));
   assert.ok(!html.includes('Secret Name') && !html.includes('a@x.com'));
   assert.ok(!/<script/i.test(html), 'page has no scripts');
+  if (sofa.priceInr && bed.priceInr) {
+    const r = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
+    assert.ok(html.includes(r(2 * sofa.priceInr)), 'two sofas priced together');
+    assert.ok(html.includes(`Estimated total: <strong>${r(2 * sofa.priceInr + bed.priceInr)}</strong>`), 'estimate of the whole design');
+  }
 });
 
 test('thumbnails: signed link in the user folder, upload, attach, shows on page (og:image)', async () => {

@@ -20,6 +20,7 @@ await seedRooms(db, JSON.parse(fs.readFileSync(path.join(data, 'rooms.json'), 'u
 const app = createApp({
   db, jwtSecret: config.jwtSecret, uploadDir: config.uploadDir ?? path.join(here, '../uploads'), publicUrl: config.publicUrl, cdnBaseUrl: config.cdnBaseUrl,
   corsOrigins: config.corsOrigins, logLevel: config.logLevel, googleClientIds: config.googleClientIds, appleAudiences: config.appleAudiences, mail: config.mail, share: config.share, onError, anthropicKey: config.anthropicKey, layoutModel: config.layoutModel,
+  mlServiceUrl: config.mlServiceUrl, ...(config.roomAiDir && { roomAiDir: config.roomAiDir }),
 });
 const server = app.listen(config.port, () => console.log(`HomeTown AR API on :${config.port}`));
 

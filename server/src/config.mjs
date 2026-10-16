@@ -38,6 +38,10 @@ const schema = z.object({
   APP_STORE_URL: z.string().default(''),
   PLAY_STORE_URL: z.string().default(''),
   MAIL_FROM: z.string().default('HomeTown AR <no-reply@example.com>'),
+  /** Room AI (room understanding + redesign): the GPU ml-service on the same machine, e.g. http://127.0.0.1:8077. Empty = switched off (503). */
+  ML_SERVICE_URL: z.string().default(''),
+  /** Where a room photo waits until the ml-service has read it (deleted right after). Must be readable by the ml-service. */
+  ROOM_AI_DIR: z.string().optional(),
 });
 
 /** Reads and validates the environment. JWT_SECRET is required in production; development gets an insecure default. */
@@ -67,5 +71,7 @@ export function loadConfig(env = process.env) {
       androidCerts: e.ANDROID_SHA256_CERTS.split(',').map((s) => s.trim()).filter(Boolean), appStoreUrl: e.APP_STORE_URL, playStoreUrl: e.PLAY_STORE_URL,
     },
     mail: { provider: e.MAIL_PROVIDER, apiKey: e.RESEND_API_KEY, from: e.MAIL_FROM },
+    mlServiceUrl: e.ML_SERVICE_URL,
+    roomAiDir: e.ROOM_AI_DIR,
   };
 }

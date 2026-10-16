@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { local, meshy, photoFor, pickProducts, waitForModel } from './lib/image3d.mjs';
+import { local, meshy, photoFor, pickProducts, retryLocalTask, waitForModel } from './lib/image3d.mjs';
 import { normalise } from './publish-models.mjs';
 
 // ---- a fake Meshy ----
@@ -62,8 +62,43 @@ const noWait = async () => {};
   assert.equal(url, 'http://127.0.0.1:8077/files/task-9.glb');
   assert.deepEqual(log, ['POST /openapi/v1/image-to-3d', 'GET /openapi/v1/image-to-3d/task-9']);
 
+  // Hunyuan3D-2mv takes the photo as its front view
+  let sent;
+  const hy = local({ fetchImpl: async (_u, init = {}) => { sent = JSON.parse(init.body); return { ok: true, status: 200, text: async () => JSON.stringify({ result: 'task-h' }) }; } });
+  assert.equal(await hy.create('https://x/a.jpg', { meshModel: 'hunyuan3d-2mv' }), 'task-h');
+  assert.deepEqual(sent, { mesh_model: 'hunyuan3d-2mv', image_urls: { front: 'https://x/a.jpg' } });
+  const timed = local({ fetchImpl: async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ status: 'SUCCEEDED', elapsed_s: 41.5, model_urls: { glb: 'g' } }) }) });
+  assert.equal((await timed.status('t')).elapsedS, 41.5, 'GPU run time is passed through');
+
   const failing = local({ fetchImpl: async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ status: 'FAILED', task_error: { message: 'out of memory' } }) }) });
   await assert.rejects(() => waitForModel(failing, 't', { wait: noWait }), /out of memory/);
+
+  // a restarted local service drops the in-memory job; the script should recreate the task and keep going
+  let retryCount = 0;
+  const stale = local({
+    fetchImpl: async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ status: 'SUCCEEDED', model_urls: { glb: 'http://127.0.0.1:8077/files/retry.glb' } }) }),
+  });
+  const retriedUrl = await retryLocalTask({
+    provider: stale,
+    taskId: 'stale-task',
+    createTask: async () => {
+      retryCount++; return `fresh-task-${retryCount}`;
+    },
+    waitForTask: async (currentTaskId) => {
+      if (currentTaskId === 'stale-task') {
+        const err = new Error('local ml-service 404: unknown task id');
+        err.status = 404;
+        throw err;
+      }
+      return `http://127.0.0.1:8077/files/${currentTaskId}.glb`;
+    },
+    onRetry: ({ staleTaskId, newTaskId }) => {
+      assert.equal(staleTaskId, 'stale-task');
+      assert.equal(newTaskId, 'fresh-task-1');
+    },
+  });
+  assert.equal(retriedUrl, 'http://127.0.0.1:8077/files/fresh-task-1.glb');
+  assert.equal(retryCount, 1);
   console.log('local provider tests passed');
 }
 

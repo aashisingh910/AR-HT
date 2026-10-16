@@ -18,43 +18,42 @@ LABELS = "sofa. chair. bed. table. wardrobe. cabinet. wall. window. door. floor.
 ARCHITECTURAL = {"wall", "window", "door", "floor"}
 
 
-def _load_depth():
-    from transformers import pipeline
+from .stage3_redesign import _depth as _load_depth  # one cached Depth Anything V2 Small, shared with stage 3
 
-    return pipeline(
-        "depth-estimation",
-        model="depth-anything/Depth-Anything-V2-Small-hf",
-        device=0 if common.device() == "cuda" else -1,
-    )
+# Loaded once and kept in system RAM between requests (re-reading them from disk took most of each request).
+# Each is moved to the GPU only while a job uses it, then back, so the 8 GB card stays free for the other stages.
+_CACHE: dict = {}
 
 
 def _load_detector():
-    from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
+    if "detector" not in _CACHE:
+        from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
 
-    processor = AutoProcessor.from_pretrained("IDEA-Research/grounding-dino-tiny")
-    model = AutoModelForZeroShotObjectDetection.from_pretrained(
-        "IDEA-Research/grounding-dino-tiny"
-    ).to(common.device())
-    model.eval()
-    return model, processor
+        processor = AutoProcessor.from_pretrained("IDEA-Research/grounding-dino-tiny")
+        model = AutoModelForZeroShotObjectDetection.from_pretrained("IDEA-Research/grounding-dino-tiny").eval()
+        _CACHE["detector"] = (model, processor)
+    model, processor = _CACHE["detector"]
+    return model.to(common.device()), processor
 
 
 def _load_sam2():
-    from transformers import Sam2Model, Sam2Processor
+    if "sam2" not in _CACHE:
+        from transformers import Sam2Model, Sam2Processor
 
-    model = Sam2Model.from_pretrained("facebook/sam2.1-hiera-small").to(common.device())
-    model.eval()
-    processor = Sam2Processor.from_pretrained("facebook/sam2.1-hiera-small")
-    return model, processor
+        _CACHE["sam2"] = (Sam2Model.from_pretrained("facebook/sam2.1-hiera-small").eval(), Sam2Processor.from_pretrained("facebook/sam2.1-hiera-small"))
+    model, processor = _CACHE["sam2"]
+    return model.to(common.device()), processor
+
+
+def warm_up() -> None:
+    """Load stage 2's models into RAM ahead of the first request (run_service.py calls this through the queue at start)."""
+    _load_depth()
+    _load_detector()[0].to("cpu")
+    _load_sam2()[0].to("cpu")
 
 
 def _run_depth(image: Image.Image, job_id: str, progress) -> str:
-    depther = _load_depth()
-    try:
-        depth = depther(image)["depth"]
-    finally:
-        del depther
-        common.free_gpu()
+    depth = _load_depth()(image)["depth"]
     depth_arr = np.array(depth).astype(np.float32)
     span = max(depth_arr.max() - depth_arr.min(), 1e-6)
     depth_norm = (255 * (depth_arr - depth_arr.min()) / span).astype(np.uint8)
@@ -78,7 +77,7 @@ def _run_detection(image: Image.Image, w: int, h: int, progress):
             target_sizes=[(h, w)],
         )[0]
     finally:
-        del model, processor
+        model.to("cpu")  # back to RAM (kept cached), freeing the GPU
         common.free_gpu()
     progress(65)
     return results
@@ -116,7 +115,7 @@ def _run_masks(image: Image.Image, detections, progress):
                 }
             )
     finally:
-        del model, processor
+        model.to("cpu")  # back to RAM (kept cached), freeing the GPU
         common.free_gpu()
     progress(90)
     return objects

@@ -1215,6 +1215,100 @@ paths:
                 "$ref": "#/components/schemas/Product"
         default:
           description: "Error: { error: string, details?: string[] }"
+  /v1/room-ai/jobs:
+    post:
+      summary: "Send one room photo (with consent) for room understanding or an AI redesign (10/day, 2/minute per user)"
+      tags:
+        - room-ai
+      security:
+        -
+          bearer:
+            []
+      description: "Requires sign-in."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              "$ref": "#/components/schemas/RoomAiForm"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoomAiJob"
+        default:
+          description: "Error: { error: string, details?: string[] }"
+  /v1/room-ai/jobs/{id}:
+    get:
+      summary: "Progress and result of your room AI job (the photo is deleted once read)"
+      tags:
+        - room-ai
+      security:
+        -
+          bearer:
+            []
+      description: "Requires sign-in."
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoomAiJob"
+        default:
+          description: "Error: { error: string, details?: string[] }"
+    delete:
+      summary: "Forget the job and delete its photo and results now"
+      tags:
+        - room-ai
+      security:
+        -
+          bearer:
+            []
+      description: "Requires sign-in."
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+        default:
+          description: "Error: { error: string, details?: string[] }"
+  /v1/room-ai/jobs/{id}/image:
+    get:
+      summary: "The redesigned room picture (PNG, private)"
+      tags:
+        - room-ai
+      security:
+        -
+          bearer:
+            []
+      description: "Requires sign-in."
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+        default:
+          description: "Error: { error: string, details?: string[] }"
   /v1/rooms:
     get:
       summary: "Curated sample rooms"
@@ -2163,6 +2257,84 @@ components:
       required:
         - roomType
         - anchorId
+    RoomAiForm:
+      type: object
+      properties:
+        photo:
+          type: string
+          format: binary
+        kind:
+          type: string
+          enum:
+            - understand
+            - redesign
+        prompt:
+          type: string
+        consent:
+          type: string
+          enum:
+            - yes
+      required:
+        - photo
+        - kind
+        - consent
+    RoomAiJob:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum:
+            - understand
+            - redesign
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - done
+            - failed
+        progress:
+          type: integer
+        error:
+          type: string
+        imageReady:
+          type: boolean
+        imageSize:
+          type: object
+          properties:
+            w:
+              type: number
+            h:
+              type: number
+          required:
+            - w
+            - h
+        floorHintY:
+          type: number
+        objects:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              score:
+                type: number
+              box:
+                type: array
+                items:
+                  type: number
+            required:
+              - label
+              - score
+              - box
+      required:
+        - id
+        - kind
+        - status
+        - progress
     UserPatch:
       type: object
       properties:

@@ -17,6 +17,14 @@
       "env": { "APP_ENV": "production", "EXPO_PUBLIC_APP_ENV": "staging" },
       "android": { "buildType": "apk" }
     },
+    "preview-lan": {
+      "distribution": "internal",
+      "channel": "preview",
+      "environment": "preview",
+      "autoIncrement": true,
+      "env": { "APP_ENV": "development", "EXPO_PUBLIC_APP_ENV": "staging", "EXPO_PUBLIC_API_URL": "http://172.16.63.167:4000" },
+      "android": { "buildType": "apk" }
+    },
     "production": {
       "channel": "production",
       "environment": "production",

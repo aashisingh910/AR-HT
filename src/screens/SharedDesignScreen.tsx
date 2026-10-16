@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '../components/ui';
 import { RoomPlan } from '../components/RoomPlan';
 import { ProductImage } from '../components/ProductImage';
+import { Estimate, PriceTag } from '../components/Price';
 import { getFurniture, sizeLabel, useProducts } from '../data/furniture';
 import { request } from '../services/http';
 import { useRooms } from '../store/roomStore';
@@ -52,13 +53,14 @@ export default function SharedDesignScreen({ navigation, route }: NativeStackScr
         save({ items: shared.items, frame: false, name: `${shared.name} (copy)` });
         Alert.alert(t('sharedDesign.saved'), t('sharedDesign.aCopyIsIn'));
       }} />
+      <Estimate pieces={shared.items} style={{ backgroundColor: colors.surface, marginTop: 14 }} />
       <Text style={s.h}>{t('plan.pieces')}</Text>
       {[...names].map(([id, n]) => {
         const p = getFurniture(id);
         return p ? (
           <View key={id} style={s.row} accessible accessibilityLabel={`${p.name}${n > 1 ? `, ${n} pieces` : ''}, ${sizeLabel(p)}`}>
             <ProductImage uri={p.images[0]} blurhash={p.blurhash} style={s.img} />
-            <View style={{ flex: 1, paddingLeft: 10 }}><Text style={s.name}>{p.name}{n > 1 ? ` × ${n}` : ''}</Text><Text style={s.meta}>{sizeLabel(p)}</Text></View>
+            <View style={{ flex: 1, paddingLeft: 10 }}><Text style={s.name}>{p.name}{n > 1 ? ` × ${n}` : ''}</Text><PriceTag product={p} /><Text style={s.meta}>{sizeLabel(p)}</Text></View>
           </View>
         ) : null;
       })}

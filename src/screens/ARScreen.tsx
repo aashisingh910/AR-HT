@@ -46,9 +46,11 @@ export default function ARScreen({ navigation, route }: NativeStackScreenProps<R
   const insets = useSafeAreaInsets();
   const session = useRef<ARSessionHandle>(null);
   const hit = useRef<Vec3 | null>(null);
+  const phonePos = useRef<Vec3 | null>(null); // where the phone is: new pieces turn to face it
   const planes = useRef(new Map<string, any>());
   const roomType = useRooms((s) => s.roomType);
   const quality = useSettings((s) => s.quality);
+  const photoModels = useSettings((s) => s.photoModels);
   const scanned = useSettings((s) => s.scanned);
   const token = useAuth((a) => a.token);
 
@@ -91,7 +93,7 @@ export default function ARScreen({ navigation, route }: NativeStackScreenProps<R
   const shownOnce = useRef(false);
   useEffect(() => { if (suggested.length && !shownOnce.current) { shownOnce.current = true; track('rec_shown', { n: suggested.length }); } }, [suggested]);
 
-  const placement = usePlacement({ hit, items, commit, product, wall: wall.wall, selected, setSelectedId, isSuggested: (id) => suggested.some((r) => r.product.id === id) });
+  const placement = usePlacement({ hit, camera: phonePos, items, commit, product, wall: wall.wall, selected, setSelectedId, isSuggested: (id) => suggested.some((r) => r.product.id === id) });
   const io = useDesignIO({ params: route.params, catalogue: FURNITURE, items, commit, session, hit, scan, planes, token, anchorProduct: selectedProduct ?? product, room,
     // After the 2nd saved design a guest is offered cloud backup (once; saving again does not re-ask).
     onSaved: (n) => { if (n === 2 && !token && cloud.enabled) Alert.alert(t('aR.backUpYourDesigns'), t('aR.signInToKeep'), [{ text: t('common.notNow'), style: 'cancel' }, { text: t('nav.signIn'), onPress: () => navigation.navigate('SignIn') }]); } });
@@ -113,7 +115,8 @@ export default function ARScreen({ navigation, route }: NativeStackScreenProps<R
   }, []);
   useEffect(() => { track('ar_opened', { from: route.params.designId ? 'design' : route.params.productId ? 'product' : 'direct' }); return () => { hit.current = null; }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onHit = useCallback((pos: Vec3 | null) => { hit.current = pos; setHasSurface(!!pos); }, []);
+  // `pos` is only set on a detected floor plane (not ARCore's rough estimate), so nothing is placed floating or sunk.
+  const onHit = useCallback((pos: Vec3 | null, cam?: Vec3) => { hit.current = pos; if (cam) phonePos.current = cam; setHasSurface(!!pos); }, []);
   const onTracking = useCallback((st: number) => { setTracking(st); if (st === TRACKING_NORMAL) setEverTracked(true); }, []);
   const onAnchor = useCallback((a: any) => { if (a?.anchorId) planes.current.set(a.anchorId, a); }, []);
   const onModelError = useCallback((uid: string) => setBroken((b) => (b.includes(uid) ? b : [...b, uid])), []);
@@ -130,8 +133,8 @@ export default function ARScreen({ navigation, route }: NativeStackScreenProps<R
   useEffect(() => { if (!hintSeen && items.length > 0) { const id = setTimeout(() => setHint(true), 900); return () => clearTimeout(id); } }, [hintSeen, items.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
   useFrameRate(high && items.length >= 10, LOW_FPS, (fps) => { if (shouldDropQuality(quality, fps, items.length)) { setQuality('standard', false); setDropped(true); } });
   const sceneProps = useMemo<Omit<SceneProps, 'bridge'>>(
-    () => ({ items, selectedId, colliding, corners: [...scan.corners, ...wall.points], outline: scan.outline, wall: wall.wall, modelUris, proxyUids, shadows: high, onHit, onTracking, onAnchor, onSelect: setSelectedId, onUpdate: update, onModelError }),
-    [items, selectedId, colliding, scan.corners, scan.outline, wall.points, wall.wall, modelUris, proxyUids, high, onHit, onTracking, onAnchor, update, onModelError]);
+    () => ({ items, selectedId, colliding, corners: [...scan.corners, ...wall.points], outline: scan.outline, wall: wall.wall, modelUris, proxyUids, photoModels, shadows: high, onHit, onTracking, onAnchor, onSelect: setSelectedId, onUpdate: update, onModelError }),
+    [items, selectedId, colliding, scan.corners, scan.outline, wall.points, wall.wall, modelUris, proxyUids, photoModels, high, onHit, onTracking, onAnchor, update, onModelError]);
 
   const lost = everTracked && tracking !== TRACKING_NORMAL;
   const status = dropped ? t('ar.qualityDropped') : scan.scanning ? t('ar.statusScan', { n: scan.corners.length })
@@ -148,7 +151,7 @@ export default function ARScreen({ navigation, route }: NativeStackScreenProps<R
 
   const roomLine = scan.box ? t('ar.roomLine', { w: (scan.box.widthCm / 100).toFixed(1), d: (scan.box.depthCm / 100).toFixed(1), area: scan.box.areaM2.toFixed(1), free: Math.max(0, scan.box.areaM2 - usedM2).toFixed(1) }) : undefined;
   const selectedLine = selectedProduct && selected
-    ? `${selectedProduct.name} · ${sizeLabel(selectedProduct)}${!selectedProduct.model3D ? ` · ${t('ar.simplifiedShape')}` : ''}${selected.scale !== 1 ? ` · ${t('ar.sizePercent', { pct: Math.round(selected.scale * 100) })}` : ''}` : undefined;
+    ? `${selectedProduct.name}${selectedProduct.priceInr ? ` · ${rupees(selectedProduct.priceInr)}` : ''} · ${sizeLabel(selectedProduct)}${!selectedProduct.model3D || (!!selectedProduct.model3D.bundled && !photoModels && !!selectedProduct.proxy) ? ` · ${t('ar.simplifiedShape')}` : ''}${selected.scale !== 1 ? ` · ${t('ar.sizePercent', { pct: Math.round(selected.scale * 100) })}` : ''}` : undefined;
   const budgetLine = items.length > 0 ? t('studio.budgetLabel', { total: rupees(budget.total), count: items.length }) : undefined;
   const fit = room ? { area: room.area, maxSpan: room.maxSpan } : null;
   const pairs = selectedProduct ? completeLook(selectedProduct, FURNITURE, items.map((i) => i.productId)).filter((p) => !fit || fitsRoom(p, fit, usedM2)).slice(0, 4) : [];

@@ -13,6 +13,7 @@ import RawRoomsScreen from '../screens/RoomsScreen';
 import RawRoomDetailScreen from '../screens/RoomDetailScreen';
 import RawPlanScreen from '../screens/PlanScreen';
 import RawRoomStudioScreen from '../screens/RoomStudioScreen';
+import RawRoomRedesignScreen from '../screens/RoomRedesignScreen';
 import { Ionicons } from '@expo/vector-icons';
 import RawSharedDesignScreen from '../screens/SharedDesignScreen';
 import RawSignInScreen from '../screens/auth/SignInScreen';
@@ -36,6 +37,7 @@ const ARScreen = withBoundary(RawARScreen, 'ar');
 const RoomsScreen = withBoundary(RawRoomsScreen, 'rooms');
 const RoomStudioScreen = withBoundary(RawRoomStudioScreen, 'roomstudio');
 const RoomDetailScreen = withBoundary(RawRoomDetailScreen, 'roomdetail');
+const RoomRedesignScreen = withBoundary(RawRoomRedesignScreen, 'roomredesign');
 const PlanScreen = withBoundary(RawPlanScreen, 'plan');
 const SharedDesignScreen = withBoundary(RawSharedDesignScreen, 'shareddesign');
 const SignInScreen = withBoundary(RawSignInScreen, 'signin');
@@ -52,6 +54,7 @@ export type RootStackParamList = {
   AR: { productId?: string; designId?: string; starter?: boolean; mode?: 'scan'; sharedItems?: import('../types/furniture').SavedDesign['items']; fromPlan?: boolean };
   Plan: { designId?: string; productId?: string } | undefined;
   RoomStudio: { kind: import('../studio/studio').KindId };
+  RoomRedesign: undefined;
   SharedDesign: { slug: string };
   SignIn: undefined;
   SignUp: undefined;
@@ -98,6 +101,7 @@ export function RootNavigator() {
       <Stack.Screen name="RoomDetail" component={RoomDetailScreen} options={{ title: t('nav.room') }} />
       <Stack.Screen name="AR" component={ARScreen} options={{ headerShown: false }} />
       <Stack.Screen name="RoomStudio" component={RoomStudioScreen} options={{ title: t('rooms.designARoom') }} />
+      <Stack.Screen name="RoomRedesign" component={RoomRedesignScreen} options={{ title: t('nav.roomAi') }} />
       <Stack.Screen name="Plan" component={PlanScreen} options={{ title: t('nav.plan') }} />
       <Stack.Screen name="SharedDesign" component={SharedDesignScreen} options={{ title: t('nav.shared') }} />
       <Stack.Screen name="SignIn" component={SignInScreen} options={{ title: t('nav.signIn') }} />

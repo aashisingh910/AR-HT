@@ -2,13 +2,12 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ProductImage } from './ProductImage';
 import { sizeLabel } from '../data/furniture';
-import { rupees } from '../studio/studio';
-import { SHOW_PRICES } from '../config';
+import { PriceTag } from './Price';
 import { colors } from '../theme';
 import type { Product } from '../types/furniture';
 
 /**
- * A product as a small card with its photo, name, size and (when prices are on) the reference price.
+ * A product as a small card with its photo, name, size and price (with the sale discount when there is one).
  * Used wherever the user picks furniture: the AR sheet's Suggested and All tabs, the room planner, the plan editor.
  */
 export function ProductCard({ product, onPress, selected, note, label, width = 150 }: {
@@ -20,7 +19,7 @@ export function ProductCard({ product, onPress, selected, note, label, width = 1
       <View style={s.body}>
         <Text style={s.name} numberOfLines={2}>{product.name}</Text>
         <Text style={s.meta} numberOfLines={1}>{sizeLabel(product)}</Text>
-        {SHOW_PRICES && product.priceInr ? <Text style={s.price}>{rupees(product.priceInr)}</Text> : null}
+        <PriceTag product={product} />
         {note ? <Text style={s.note} numberOfLines={2}>{note}</Text> : null}
       </View>
     </Pressable>
@@ -34,6 +33,5 @@ const s = StyleSheet.create({
   body: { padding: 8 },
   name: { color: colors.ink, fontSize: 12, fontWeight: '600', minHeight: 30 },
   meta: { color: colors.muted, fontSize: 11, marginTop: 2 },
-  price: { color: colors.accent, fontSize: 12, fontWeight: '700', marginTop: 2 },
   note: { color: colors.muted, fontSize: 11, marginTop: 3 },
 });

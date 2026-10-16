@@ -14,6 +14,8 @@ const SNAP_M = 0.05; // drag snaps to a 5 cm grid
 
 ViroMaterials.createMaterials({
   reticle: { diffuseColor: '#FFFFFFCC', lightingModel: 'Constant' },
+  // shown while ARCore only has a rough guess of the floor: placing is off until a real plane is found (it floats or sinks otherwise)
+  reticleWeak: { diffuseColor: '#FFFFFF55', lightingModel: 'Constant' },
   ring: { diffuseColor: '#2F6F5ECC', lightingModel: 'Constant' },
   corner: { diffuseColor: '#F5C518EE', lightingModel: 'Constant' },
   ringBad: { diffuseColor: '#D8402FCC', lightingModel: 'Constant' },
@@ -35,8 +37,10 @@ export interface SceneProps {
   modelUris: Record<string, string>;
   /** uids drawn as their simplified shape because too many real models are in the scene. */
   proxyUids: string[];
+  photoModels: boolean;
   shadows: boolean;
-  onHit: (pos: Vec3 | null) => void;
+  /** `pos` is set only on a detected plane (never ARCore's estimate); `camera` is where the phone is, so new pieces can face the user. */
+  onHit: (pos: Vec3 | null, camera?: Vec3) => void;
   onTracking: (state: number) => void;
   onAnchor: (a: any) => void;
   bridge: { current: any };
@@ -46,24 +50,28 @@ export interface SceneProps {
 }
 
 export function PlacementScene(props: any) {
-  const { items, selectedId, colliding, corners, outline, wall, modelUris, proxyUids, shadows, onHit, onTracking, onAnchor, bridge, onSelect, onUpdate, onModelError } = props.sceneNavigator.viroAppProps as SceneProps;
+  const { items, selectedId, colliding, corners, outline, wall, modelUris, proxyUids, photoModels, shadows, onHit, onTracking, onAnchor, bridge, onSelect, onUpdate, onModelError } = props.sceneNavigator.viroAppProps as SceneProps;
   // exposes hostCloudAnchor / resolveCloudAnchor to the screen
   useEffect(() => { bridge.current = props.sceneNavigator; });
-  const [reticle, setReticle] = useState<Vec3 | null>(null);
-  const [light, setLight] = useState({ intensity: 900, color: '#FFFFFF' });
-  const last = useRef<Vec3 | null>(null);
+  const [reticle, setReticle] = useState<{ pos: Vec3; real: boolean } | null>(null);
+  const [light, setLight] = useState({ intensity: 1000, color: '#FFFFFF' });
+  const last = useRef<{ pos: Vec3; real: boolean } | null>(null);
   const base = useRef<Record<string, { scale: number; rot: number }>>({});
 
-  // Fires every frame; only update state when the hit moved > 1 cm so the scene doesn't re-render at camera rate.
+  // Fires every frame; only update state when the hit moved > 1 cm (or changed kind) so the scene doesn't re-render at camera rate.
   const onCameraARHitTest = (e: any) => {
     const results: any[] = e.hitTestResults ?? [];
-    const hit =
-      results.find((r) => r.type === 'ExistingPlaneUsingExtent' || r.type === 'ExistingPlane') ??
-      results.find((r) => r.type === 'EstimatedHorizontalPlane');
-    const pos: Vec3 | null = hit ? (hit.transform.position as Vec3) : null;
+    const plane = results.find((r) => r.type === 'ExistingPlaneUsingExtent' || r.type === 'ExistingPlane');
+    const guess = plane ? null : results.find((r) => r.type === 'EstimatedHorizontalPlane');
+    const hit = plane ?? guess;
+    const cur = hit ? { pos: hit.transform.position as Vec3, real: !!plane } : null;
     const prev = last.current;
-    const moved = !!pos !== !!prev || (pos && prev && Math.hypot(pos[0] - prev[0], pos[1] - prev[1], pos[2] - prev[2]) > 0.01);
-    if (moved) { last.current = pos; setReticle(pos); onHit(pos); }
+    const moved = !!cur !== !!prev || (cur && prev && (cur.real !== prev.real || Math.hypot(cur.pos[0] - prev.pos[0], cur.pos[1] - prev.pos[1], cur.pos[2] - prev.pos[2]) > 0.01));
+    if (moved) {
+      last.current = cur; setReticle(cur);
+      const cam = e.cameraOrientation?.position as Vec3 | undefined;
+      onHit(cur?.real ? cur.pos : null, cam);
+    }
   };
   const grab = (it: PlacedItem) => (base.current[it.uid] ??= { scale: it.scale, rot: it.rotationY });
 
@@ -75,23 +83,25 @@ export function PlacementScene(props: any) {
       onAnchorUpdated={onAnchor}
       onAmbientLightUpdate={(u: { intensity: number; color: string }) =>
         setLight((cur) =>
-          u.intensity >= 200 && u.intensity <= 3000 && Math.abs(u.intensity - cur.intensity) / cur.intensity > 0.1
+          u.intensity >= 400 && u.intensity <= 3000 && Math.abs(u.intensity - cur.intensity) / cur.intensity > 0.1
             ? { intensity: u.intensity, color: u.color || cur.color } : cur)
       }
     >
-      <ViroAmbientLight color={light.color} intensity={light.intensity} />
-      {shadows && items.length > 0 && (() => {
+      {/* Ambient follows the room's measured light (so pieces match the room); a key light from above-front always gives the
+          furniture shading and depth. Shadows (the costly part) only on High quality. */}
+      <ViroAmbientLight color={light.color} intensity={light.intensity * 0.8} />
+      {shadows && items.length > 0 ? (() => {
         // Frame the shadow camera around ALL floor pieces, not just the first one.
         const frame = shadowFrame(items.filter((i) => !isWallOnly(getFurniture(i.productId))).map((i) => i.position));
         return (
           <ViroDirectionalLight
-            color="#FFFFFF" intensity={600} direction={[0.3, -1, -0.4]} castsShadow shadowOpacity={0.5} shadowMapSize={1024}
+            color="#FFFFFF" intensity={700} direction={[0.3, -1, -0.4]} castsShadow shadowOpacity={0.5} shadowMapSize={1024}
             shadowOrthographicSize={frame.size} shadowNearZ={0.1} shadowFarZ={frame.position[1] + 3}
             shadowOrthographicPosition={[frame.position[0] - 0.9, frame.position[1], frame.position[2] + 1.2]}
           />
         );
-      })()}
-      {reticle && <ViroQuad position={reticle} rotation={[-90, 0, 0]} width={0.22} height={0.22} materials={['reticle']} />}
+      })() : <ViroDirectionalLight color="#FFFFFF" intensity={700} direction={[0.3, -1, -0.4]} />}
+      {reticle && <ViroQuad position={reticle.pos} rotation={[-90, 0, 0]} width={0.22} height={0.22} materials={[reticle.real ? 'reticle' : 'reticleWeak']} />}
       {corners.map((c, i) => (
         <ViroQuad key={'c' + i} position={[c[0], c[1] + 0.004, c[2]]} rotation={[-90, 0, 0]} width={0.14} height={0.14} materials={['corner']} />
       ))}
@@ -99,7 +109,9 @@ export function PlacementScene(props: any) {
       {items.map((it) => {
         const product = getFurniture(it.productId);
         if (!product || (!product.model3D && !product.proxy)) return null;
-        const real = !!product.model3D && !(proxyUids.includes(it.uid) && product.proxy);
+        const generated = !!product.model3D?.bundled;
+        const real = !!product.model3D && !(proxyUids.includes(it.uid) && product.proxy)
+          && !(generated && !photoModels && product.proxy);
         // Photo-real model: uniform scale. Simplified shape: a 1 m cube stretched to the real W x H x D.
         const sc: Vec3 = real ? [it.scale, it.scale, it.scale]
           : [(product.dimensionsCm.w / 100) * it.scale, (product.dimensionsCm.h / 100) * it.scale, (product.dimensionsCm.d / 100) * it.scale];

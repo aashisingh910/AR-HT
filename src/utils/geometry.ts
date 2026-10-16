@@ -56,6 +56,46 @@ export function collidingUids(items: PlacedItem[], find: (id: string) => Product
   return out;
 }
 
+/**
+ * Heading (degrees about +Y) that turns a piece's front (+z) towards a viewer at `viewer` (x, y, z): a new piece faces the person
+ * placing it. Local +z maps to (sin a, cos a) in (x, z), so a = atan2(dx, dz). Snapped to 15 degrees so pieces line up easily.
+ */
+export function faceToward(at: readonly number[], viewer: readonly number[], snapDeg = 15): number {
+  const dx = viewer[0] - at[0], dz = viewer[2] - at[2];
+  if (Math.hypot(dx, dz) < 1e-6) return 0;
+  const deg = (Math.atan2(dx, dz) * 180) / Math.PI;
+  return ((Math.round(deg / snapDeg) * snapDeg) % 360 + 360) % 360;
+}
+
+/**
+ * Where to put a new piece so it doesn't overlap what is already placed: the aimed spot if it is free, else the nearest free spot
+ * on rings of 10 cm steps around it (up to `maxM`). Returns the aimed spot when nothing nearby is free (the overlap is then shown in red).
+ */
+export function freeSpot(item: PlacedItem, product: Product, others: PlacedItem[], find: (id: string) => Product | undefined, maxM = 2): PlacedItem['position'] {
+  const shapes = others.flatMap((o) => { const p = find(o.productId); return p ? [footprint(o, p)] : []; });
+  const free = (pos: PlacedItem['position']) => { const f = footprint({ ...item, position: pos }, product); return !shapes.some((s) => overlaps(f, s)); };
+  if (free(item.position)) return item.position;
+  const [x, y, z] = item.position;
+  for (let r = 0.1; r <= maxM + 1e-9; r += 0.1) {
+    const steps = Math.max(8, Math.round((2 * Math.PI * r) / 0.1));
+    let best: PlacedItem['position'] | null = null;
+    for (let k = 0; k < steps; k++) {
+      const a = (2 * Math.PI * k) / steps;
+      const pos: PlacedItem['position'] = [Math.round((x + r * Math.sin(a)) * 100) / 100, y, Math.round((z + r * Math.cos(a)) * 100) / 100];
+      if (free(pos)) { best = pos; break; }
+    }
+    if (best) return best;
+  }
+  return item.position;
+}
+
+/** Floor height for a new floor piece: the median height of floor pieces already placed (all furniture stands on one floor), else the aimed spot. */
+export function floorHeight(floorItems: PlacedItem[], aimedY: number): number {
+  if (!floorItems.length) return aimedY;
+  const ys = floorItems.map((i) => i.position[1]).sort((a, b) => a - b);
+  return ys[Math.floor(ys.length / 2)];
+}
+
 export type Fit =
   | { status: 'fits'; spareCm: number }
   | { status: 'tight'; spareCm: number }

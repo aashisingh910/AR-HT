@@ -60,6 +60,13 @@ export const designInput = z.object({ name: z.string().min(1).max(80).optional()
 export const designPatch = z.object({ name: z.string().min(1).max(80).optional(), items: designItems.optional(), updatedAt: z.number().int().optional(), ...designFields })
   .refine((d) => d.name !== undefined || d.items !== undefined, 'Send a name or items');
 
+/** Room AI job (multipart text fields next to the photo). `consent` must be "yes": the user agreed to send this one photo. */
+export const roomAiInput = z.object({
+  kind: z.enum(['understand', 'redesign']),
+  prompt: z.string().trim().min(3).max(300).optional(),
+  consent: z.literal('yes', { error: 'Ask the user before sending their room photo (consent: "yes")' }),
+});
+
 export const layoutRequest = z.object({
   roomType: z.string().min(2).max(40),
   anchorId: z.string().min(1).max(120),

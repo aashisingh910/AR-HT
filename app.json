@@ -69,7 +69,15 @@
       "expo-web-browser",
       "expo-apple-authentication",
       "expo-localization",
-      "expo-image"
+      "expo-image",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HomeTown opens one room photo you choose for Redesign my room. It never reads other photos.",
+          "cameraPermission": "HomeTown uses the camera to place furniture in your room, and to take a room photo when you ask for Redesign my room.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "scheme": "hometownar",
     "userInterfaceStyle": "automatic",

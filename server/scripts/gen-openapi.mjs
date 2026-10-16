@@ -41,6 +41,10 @@ export const DOCS = {
   'GET /v1/shared/{slug}': ['A shared design (public, no personal data)', null, 'SharedDesign', []],
   'POST /v1/events': ['Anonymous usage events (batches of up to 50)', 'EventsInput', null, []],
   'POST /v1/layout/suggest': ['AI layout suggestions (20/day, 5/minute per user)', 'LayoutInput', null, []],
+  'POST /v1/room-ai/jobs': ['Send one room photo (with consent) for room understanding or an AI redesign (10/day, 2/minute per user)', 'RoomAiForm', 'RoomAiJob', []],
+  'GET /v1/room-ai/jobs/{id}': ['Progress and result of your room AI job (the photo is deleted once read)', null, 'RoomAiJob', []],
+  'GET /v1/room-ai/jobs/{id}/image': ['The redesigned room picture (PNG, private)', null, null, []],
+  'DELETE /v1/room-ai/jobs/{id}': ['Forget the job and delete its photo and results now', null, null, []],
   'GET /v1/rooms': ['Curated sample rooms', null, 'Rooms', []],
   'GET /v1/categories': ['Product categories with counts', null, null, []],
   'GET /v1/products': ['Products; filters category, role, roomType, q; paged with limit/offset', null, 'ProductPage', ['category', 'role', 'roomType', 'q', 'limit', 'offset']],
@@ -131,6 +135,11 @@ export const SCHEMAS = {
   RoomCheck: obj({ problems: arr(str), pieceProblems: { type: 'object', additionalProperties: arr(str) } }),
   EventsInput: obj({ deviceId: str, events: arr(obj({ name: str, ts: int, props: { type: 'object' } })) }, ['deviceId', 'events']),
   LayoutInput: obj({ roomType: str, anchorId: str, room: obj({ area: num, maxSpan: num }) }, ['roomType', 'anchorId']),
+  RoomAiForm: obj({ photo: { type: 'string', format: 'binary' }, kind: { type: 'string', enum: ['understand', 'redesign'] }, prompt: str, consent: { type: 'string', enum: ['yes'] } }, ['photo', 'kind', 'consent']),
+  RoomAiJob: obj({
+    id: str, kind: { type: 'string', enum: ['understand', 'redesign'] }, status: { type: 'string', enum: ['pending', 'running', 'done', 'failed'] }, progress: int, error: str, imageReady: bool,
+    imageSize: obj({ w: num, h: num }), floorHintY: num, objects: arr(obj({ label: str, score: num, box: arr(num) })),
+  }, ['id', 'kind', 'status', 'progress']),
   UserPatch: obj({ role: { type: 'string', enum: ['user', 'editor', 'admin'] }, disabled: bool }, []),
   Stats: obj({
     from: int, to: int, daily: arr(obj({ day: str, devices: int, arSessions: int, placements: int, scans: int })), topProducts: arr(obj({ id: str, name: str, count: int })),

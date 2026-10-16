@@ -7,8 +7,8 @@ import { RoomPlan } from '../components/RoomPlan';
 import { getFurniture, sizeLabel, useProducts } from '../data/furniture';
 import { fitsScanned, getRoom, ROOM_ID_PREFIX, roomAreaM2, roomProducts } from '../data/rooms';
 import { useSettings } from '../store/settingsStore';
-import { SHOW_PRICES } from '../config';
-import { formatPrice, colors } from '../theme';
+import { Estimate, PriceTag } from '../components/Price';
+import { colors } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 export default function RoomDetailScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'RoomDetail'>) {
@@ -19,7 +19,6 @@ export default function RoomDetailScreen({ navigation, route }: NativeStackScree
   const room = getRoom(route.params.id);
   if (!room) return <Text style={s.p}>{t('roomDetail.thisRoomIsNo')}</Text>;
   const list = roomProducts(room, getFurniture);
-  const total = SHOW_PRICES ? list.reduce((sum, l) => sum + (l.product.priceInr ?? 0) * (l.sets ?? l.pieces), 0) : 0;
   return (
     <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={{ padding: 14 }}>
       <View style={s.card}>
@@ -34,6 +33,7 @@ export default function RoomDetailScreen({ navigation, route }: NativeStackScree
       ) : null}
       <Text style={s.p}>{room.blurb}</Text>
       {room.notes ? <Text style={[s.p, { color: colors.muted }]}>{room.notes}</Text> : null}
+      <Estimate pieces={room.pieces} style={{ backgroundColor: colors.surface }} />
 
       <Button label={t('roomDetail.tryInMyRoom')} onPress={() => (noAR ? navigation.navigate('Plan', { designId: ROOM_ID_PREFIX + room.id }) : navigation.navigate('AR', { designId: ROOM_ID_PREFIX + room.id }))} style={{ marginTop: 14 }} />
 
@@ -41,13 +41,13 @@ export default function RoomDetailScreen({ navigation, route }: NativeStackScree
       {list.map(({ product, pieces, sets }) => (
         <Pressable key={product.id} accessibilityRole="button" accessibilityLabel={t('designs.open', { name: product.name })} style={s.row} onPress={() => navigation.navigate('Item', { id: product.id })}>
           <Text style={s.item}>{product.name}</Text>
+          <PriceTag product={product} />
           <Text style={s.meta}>
             {sizeLabel(product)}
             {product.setSize ? ` · sold in sets of ${product.setSize}: ${pieces} piece${pieces > 1 ? 's' : ''} = ${sets} set${sets! > 1 ? 's' : ''}` : pieces > 1 ? ` · ${pieces} pieces` : ''}
           </Text>
         </Pressable>
       ))}
-      {SHOW_PRICES && total > 0 ? <Text style={s.p}>Reference price for the room: {formatPrice(total)}</Text> : null}
     </ScrollView>
   );
 }

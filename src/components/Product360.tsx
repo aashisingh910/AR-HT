@@ -9,6 +9,7 @@ import { PROXY_ASSETS } from '../data/proxyAssets';
 import { BUNDLED_MODELS } from '../data/bundledModels';
 import { MODEL_VIEWER_JS } from '../assets/modelViewerSource';
 import { colors } from '../theme';
+import { useSettings } from '../store/settingsStore';
 import type { Product } from '../types/furniture';
 
 type Mode = '360' | 'photos';
@@ -39,10 +40,11 @@ mv.addEventListener('load',async()=>{try{
 </script>` : ''}</body></html>`;
 
 /** The bundled proxy GLB for this product, inlined as a data: URI so the WebView needs no file access (it is only a few KB). */
-function useProxyUri(p: Product) {
+function useProxyUri(p: Product, photoModels: boolean) {
   const [state, setState] = useState<{ uri: string | null; failed: boolean }>({ uri: null, failed: false });
-  const bundledMod = p.model3D?.bundled ? BUNDLED_MODELS[p.id] : undefined;
-  const mod = bundledMod ?? (p.proxy && !p.model3D ? PROXY_ASSETS[`${p.proxy.template}-${p.proxy.color}`] : undefined);
+  const useBundledModel = !!p.model3D?.bundled && (photoModels || !p.proxy);
+  const bundledMod = useBundledModel ? BUNDLED_MODELS[p.id] : undefined;
+  const mod = bundledMod ?? (p.proxy && (!p.model3D || p.model3D.bundled) ? PROXY_ASSETS[`${p.proxy.template}-${p.proxy.color}`] : undefined);
   useEffect(() => {
     if (!mod) return;
     let live = true;
@@ -55,7 +57,7 @@ function useProxyUri(p: Product) {
       } catch { if (live) setState({ uri: null, failed: true }); }
     })();
     return () => { live = false; };
-  }, [mod]);
+  }, [mod, useBundledModel]);
   return state;
 }
 
@@ -93,17 +95,18 @@ export function Product360({ item, onInteract }: { item: Product; onInteract?: (
   const [ready, setReady] = useState(false);
   const [broken, setBroken] = useState(false);
   useEffect(() => { AccessibilityInfo.isReduceMotionEnabled().then(setStill).catch(() => {}); }, []);
-  const proxy = useProxyUri(item);
-  const bundled = !!item.model3D?.bundled;
-  const photo = usePhotoData(item.model3D ? undefined : item.images[0]);
+  const photoModels = useSettings((s) => s.photoModels);
+  const proxy = useProxyUri(item, photoModels);
+  const bundled = !!item.model3D?.bundled && (photoModels || !item.proxy);
+  const photo = usePhotoData(!item.model3D || (!!item.model3D.bundled && !photoModels && !!item.proxy) ? item.images[0] : undefined);
   const { w, d, h } = item.dimensionsCm;
   const html = useMemo(() => {
     if (bundled) return proxy.uri ? viewerHtml(proxy.uri, { still }) : null; // real model, already true size
-    if (item.model3D) return viewerHtml(item.model3D.url, { still });
+    if (item.model3D && !item.model3D.bundled) return viewerHtml(item.model3D.url, { still });
     return proxy.uri ? viewerHtml(proxy.uri, { scale: `${w / 100} ${h / 100} ${d / 100}`, photo, still }) : null;
   }, [item.model3D, bundled, proxy.uri, photo, w, h, d, still]);
   const hasPhotos = item.images.length > 0;
-  const noModel = bundled ? proxy.failed : !item.model3D && (!item.proxy || proxy.failed);
+  const noModel = item.model3D?.bundled ? proxy.failed : !item.model3D && (!item.proxy || proxy.failed);
   const failed = broken || noModel;
   const showing360 = mode === '360' && !failed;
 
@@ -129,7 +132,7 @@ export function Product360({ item, onInteract }: { item: Product; onInteract?: (
               />
             ) : null}
             {!ready ? <ActivityIndicator style={s.center} size="large" color={colors.accent} /> : null}
-            {ready ? <Text style={s.tag}>{item.model3D ? t('p360.drag') : photo ? t('p360.photoWrap') : t('p360.shape')}</Text> : null}
+            {ready ? <Text style={s.tag}>{bundled || (item.model3D && !item.model3D.bundled) ? t('p360.drag') : photo ? t('p360.photoWrap') : t('p360.shape')}</Text> : null}
           </>
         ) : (
           <>

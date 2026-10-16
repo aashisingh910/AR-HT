@@ -1,117 +1,126 @@
-"""Stage 3 — a room photo + a text instruction becomes a styled concept image.
+"""Stage 3 — a room photo + a text instruction becomes a styled concept image, in seconds.
 
-SDXL + a depth ControlNet keeps the room's walls/windows/perspective roughly fixed while
-restyling it to the prompt.
+SDXL + a depth ControlNet keeps the room's walls/windows/perspective roughly fixed while restyling it to the prompt.
 
-Does NOT use `enable_model_cpu_offload()` — on this project's dev GPU, that accelerate-hooked
-offload path corrupted GPU memory twice (two different attention kernels, two different CUDA
-errors, both mid-UNet-forward). A third test, after removing it, still failed with yet another
-CUDA error (this time inside plain sliced attention, no accelerate hooks at all) — but that run
-had under 300MB of the card's 8GB free the whole time (an unrelated process held the rest), which
-is the far more likely explanation for all three failures than a GPU/driver incompatibility: SDXL
-+ ControlNet cannot succeed in a few hundred MB regardless of how it's loaded. See ML-PIPELINE.md
-at the repo root ("Known hardware issue") for the full history. This has not yet been verified
-under a clean multi-GB-free condition — do that before trusting its output. If your GPU has more
-headroom, `height`/`width` in the job payload can go back up to 1024.
+Why it is fast (it took ~20 minutes per image on this project's 8 GB RTX 5060 before):
+  * SDXL-Lightning 4-step LoRA, fused into the UNet: 4 denoising steps instead of 28, and no classifier-free guidance
+    (guidance_scale=0, as Lightning is trained), so each step is one UNet pass instead of two. ~14x less work.
+  * The *small* depth ControlNet (~0.3 GB) instead of the full one (~2.5 GB): the full one pushed SDXL past 8 GB, so the
+    driver spilled into system RAM and every step took ~44 s.
+  * `enable_model_cpu_offload()`: the weights wait in system RAM and each model (text encoders, UNet + ControlNet, VAE) is
+    moved onto the GPU only while it runs, so the peak is the UNet (~5 GB) and furniture jobs still fit between requests.
+    (An earlier version blamed this offload path for CUDA crashes; ML-PIPELINE.md shows those runs had under 300 MB of VRAM
+    free because another process held the card. With the GPU free it runs cleanly.)
+  * Everything is loaded once and kept (`_CACHE`), so a request does not re-read ~7 GB from disk. `warm_up()` preloads it.
+  * Output keeps the photo's aspect ratio (it used to be squashed to a square).
 
-This is a design preview, not a measured scene: callers must not treat its output as geometry
-(see the `note` in the result, and CLAUDE.md's "generated room images are previews, not
-dimensionally correct" rule for this project).
+This is a design preview, not a measured scene: callers must not treat its output as geometry (see the `note` in the
+result). Real products are placed true-to-size in AR.
 """
+import threading
+
 import torch
 from PIL import Image
 
 from . import common
 
-DEFAULT_PROMPT = (
-    "a tidy, well-lit, minimalist living room, photorealistic, interior design magazine photo"
-)
-DEFAULT_NEGATIVE = "blurry, distorted geometry, extra walls, warped furniture, text, watermark"
-DEFAULT_SIZE = 768  # SDXL supports this natively (it's one of its trained bucket resolutions); lighter than 1024
+DEFAULT_PROMPT = "a tidy, well-lit, minimalist living room, photorealistic, interior design magazine photo"
+DEFAULT_SIZE = 768  # longest side, px (SDXL is trained near 1024; 768 keeps it fast on 8 GB)
+DEFAULT_STEPS = 4   # SDXL-Lightning 4-step
+QUALITY_SUFFIX = ", photorealistic interior photo, high detail, natural light"
+
+BASE = "stabilityai/stable-diffusion-xl-base-1.0"
+CONTROLNET = "diffusers/controlnet-depth-sdxl-1.0-small"
+LIGHTNING = ("ByteDance/SDXL-Lightning", "sdxl_lightning_4step_lora.safetensors")
+DEPTH = "depth-anything/Depth-Anything-V2-Small-hf"
+
+_CACHE: dict = {}
+_LOCK = threading.Lock()
 
 
-def _depth_condition_image(image: Image.Image, size: int) -> Image.Image:
-    from transformers import pipeline
+def _depth():
+    """Depth Anything V2 Small (~100 MB) stays on the GPU: it is tiny and stage 2 uses it too."""
+    if "depth" not in _CACHE:
+        from transformers import pipeline
 
-    depther = pipeline(
-        "depth-estimation",
-        model="depth-anything/Depth-Anything-V2-Small-hf",
-        device=0 if common.device() == "cuda" else -1,
-    )
-    try:
-        depth = depther(image)["depth"]
-    finally:
-        del depther
-        common.free_gpu()
-    return depth.convert("RGB").resize((size, size))
+        _CACHE["depth"] = pipeline("depth-estimation", model=DEPTH, device=0 if common.device() == "cuda" else -1)
+    return _CACHE["depth"]
 
 
-def _load_pipe(device: str):
-    from diffusers import (
-        ControlNetModel,
-        StableDiffusionXLControlNetPipeline,
-        UniPCMultistepScheduler,
-    )
+def _pipe():
+    with _LOCK:
+        if "pipe" in _CACHE:
+            return _CACHE["pipe"]
+        from diffusers import ControlNetModel, EulerDiscreteScheduler, StableDiffusionXLControlNetPipeline
+        from huggingface_hub import hf_hub_download
 
-    dtype = torch.float16 if device == "cuda" else torch.float32
-    kwargs = {"torch_dtype": dtype, "variant": "fp16"} if device == "cuda" else {"torch_dtype": dtype}
-    controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-depth-sdxl-1.0", **kwargs)
-    pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, **kwargs
-    )
-    pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-    pipe.to(device)  # fully resident, no accelerate cpu-offload hooks — see module docstring for why
-    pipe.enable_attention_slicing("max")
-    pipe.vae.enable_slicing()
-    pipe.vae.enable_tiling()
-    return pipe
+        cuda = common.device() == "cuda"
+        dtype = torch.float16 if cuda else torch.float32
+        kwargs = {"torch_dtype": dtype, "variant": "fp16"} if cuda else {"torch_dtype": dtype}
+        controlnet = ControlNetModel.from_pretrained(CONTROLNET, **kwargs)
+        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(BASE, controlnet=controlnet, **kwargs)
+        pipe.load_lora_weights(hf_hub_download(*LIGHTNING))
+        pipe.fuse_lora()
+        pipe.unload_lora_weights()  # the weights are merged into the UNet; drop the adapter copies
+        # Lightning needs "trailing" timesteps (its model card); the default spacing gives washed-out images at 4 steps.
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+        if cuda:
+            pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=True)
+        _CACHE["pipe"] = pipe
+        return pipe
+
+
+def warm_up() -> None:
+    """Load everything into RAM ahead of the first request (run_service.py calls this through the queue at start)."""
+    _depth()
+    _pipe()
+
+
+def _fit(image: Image.Image, longest: int) -> tuple[int, int]:
+    """Output size with the photo's aspect ratio, longest side `longest`, both sides multiples of 64 (SDXL needs /8; 64 is safest)."""
+    w, h = image.size
+    scale = longest / max(w, h)
+    snap = lambda v: max(384, round(v * scale / 64) * 64)  # noqa: E731 — very thin strips look bad, so never below 384
+    return snap(w), snap(h)
 
 
 def run_redesign(job, progress) -> dict:
     payload = job.payload
     image = common.download_image(payload["image_url"])
-    prompt = payload.get("prompt") or DEFAULT_PROMPT
-    negative = payload.get("negative_prompt") or DEFAULT_NEGATIVE
-    steps = int(payload.get("steps", 28))
+    prompt = (payload.get("prompt") or DEFAULT_PROMPT) + QUALITY_SUFFIX
+    steps = int(payload.get("steps", DEFAULT_STEPS))
     seed = int(payload.get("seed", 0))
     conditioning_scale = float(payload.get("conditioning_scale", 0.6))
-    size = int(payload.get("size", DEFAULT_SIZE))
-    # Explicit opt-out valve: pass {"device": "cpu"} in the job payload to force CPU execution
-    # (slow — minutes, not seconds — but immune to this GPU's CUDA corruption) if a run is
-    # critical and the GPU path is misbehaving again. Never auto-retried on CPU in-process:
-    # once a CUDA context has thrown an illegal-memory-access, torch calls after it (even on
-    # the CPU device) are not reliably safe in that same process.
-    device = payload.get("device") or common.device()
+    width, height = _fit(image, int(payload.get("size", DEFAULT_SIZE)))
     progress(10)
 
-    condition = _depth_condition_image(image, size)
-    progress(35)
+    depth = _depth()(image)["depth"]
+    condition = depth.convert("RGB").resize((width, height))
+    progress(25)
 
-    pipe = _load_pipe(device)
-    try:
-        generator = torch.Generator(device="cpu").manual_seed(seed)
+    pipe = _pipe()
+    progress(35)
+    with torch.no_grad():
         out = pipe(
             prompt=prompt,
-            negative_prompt=negative,
             image=condition,
             num_inference_steps=steps,
+            guidance_scale=0.0,  # Lightning is distilled for no classifier-free guidance: one UNet pass per step
             controlnet_conditioning_scale=conditioning_scale,
-            generator=generator,
-            height=size,
-            width=size,
+            generator=torch.Generator(device="cpu").manual_seed(seed),
+            width=width,
+            height=height,
         )
-        result_image = out.images[0]
-    finally:
-        del pipe
-        common.free_gpu()
     progress(90)
 
     out_path = common.OUTPUT_DIR / f"{job.id}.png"
-    result_image.save(out_path)
+    out.images[0].save(out_path)
     progress(100)
     return {
         "image_url": f"/files/{job.id}.png",
         "prompt": prompt,
+        "size": {"w": width, "h": height},
         "note": (
             "Design concept image only, not a measured 3D scene. Do not use for placement, "
             "clearance or scale decisions — keep it separate from the dimensionally correct AR view."

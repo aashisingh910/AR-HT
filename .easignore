@@ -1,0 +1,31 @@
+# What EAS Build uploads: only the phone app. (Replaces .gitignore for EAS; this folder is not a git repository.)
+# The app needs: App.tsx, index.ts, app.json, app.config.js, eas.json, metro/tsconfig, package*.json, src/, assets/, shared/, plugins/.
+# Leading "/" = only at the project root. Without it "models/" would also drop assets/models/ and "data/" would drop src/data/.
+node_modules/
+/.expo/
+/android/
+/ios/
+/dist/
+*.log
+.cache/
+.env
+.env.*
+!.env.example
+
+# server side, GPU pipeline, data and tooling: never part of the app bundle
+/server/
+/models/
+/reference/
+/colab/
+/admin/
+/docs/
+/prompts/
+/data/
+/scripts/
+/__tests__/
+/.maestro/
+/.github/
+*.csv
+/*.ps1
+/ML-PIPELINE.md
+/TESTING.md

@@ -33,10 +33,15 @@ Server: Node 22, Express 5, zod, JWT, bcryptjs, multer, @gltf-transform. (SQLite
 - **Saved designs store offsets**, never raw world positions (AR world origin changes every session). Three modes:
   offset from first piece; two-point frame (`utils/frame.ts`); cloud-anchor pose.
 - **True scale is sacred:** resize is clamped to 80–125%. Proxies are stretched to the real W×H×D.
-- **Camera frames never leave the phone**, with one exception: a design's thumbnail (a screenshot of the AR view) is uploaded only when the user shares that
-  design or turns on "Back up design photos" (off by default). Analytics events carry ids and numbers only.
+- **Camera frames never leave the phone**, with two exceptions: (1) a design's thumbnail (a screenshot of the AR view) is uploaded only when the user shares that
+  design or turns on "Back up design photos" (off by default); (2) "Redesign my room" (room AI, `src/screens/RoomRedesignScreen.tsx` ->
+  `/v1/room-ai` -> `server/ml-service`) sends the ONE photo the user picks, after an explicit consent switch, shrunk to 1024 px with EXIF removed.
+  The server deletes it as soon as the ml-service has read it and deletes the results when the user leaves the screen (or after 1 h).
+  AR camera frames are never sent. Analytics events carry ids and numbers only.
 - **AR library isolation:** only files under `src/ar/` may import `@reactvision/react-viro` (from step 01 on).
-- **No checkout.** Prices are optional reference data behind the `SHOW_PRICES` flag (`src/config.ts`).
+- **No checkout, but prices everywhere.** Every product card/page shows its HomeTown price (`PriceTag`, with sale discount), and
+  every group of pieces (design, sample room, wishlist, shared page, AR, plan, studio) shows an estimated total (`Estimate` /
+  `budgetOf`, sets counted once). Both live in `src/components/Price.tsx`; `SHOW_PRICES=0` remains only as an emergency off switch.
 
 ## Code rules
 - TypeScript strict, no `any` in new code unless wrapping Viro events. Small files: a screen file over ~300 lines

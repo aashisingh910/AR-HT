@@ -31,6 +31,10 @@ Everything is under `/v1` unless it is a public page. Errors are `{ "error": "me
 | DELETE | `/v1/designs/{id}` | signed in | Soft delete (other devices learn through ?since) |
 | POST | `/v1/events` | public | Anonymous usage events (batches of up to 50) |
 | POST | `/v1/layout/suggest` | signed in | AI layout suggestions (20/day, 5/minute per user) |
+| POST | `/v1/room-ai/jobs` | signed in | Send one room photo (with consent) for room understanding or an AI redesign (10/day, 2/minute per user) |
+| GET | `/v1/room-ai/jobs/{id}` | signed in | Progress and result of your room AI job (the photo is deleted once read) |
+| GET | `/v1/room-ai/jobs/{id}/image` | signed in | The redesigned room picture (PNG, private) |
+| DELETE | `/v1/room-ai/jobs/{id}` | signed in | Forget the job and delete its photo and results now |
 | GET | `/v1/rooms` | public | Curated sample rooms |
 | POST | `/v1/admin/products` | editor | Create a product, optionally with a GLB (multipart: product JSON + model) |
 | PUT | `/v1/admin/products/{id}` | editor | Partial update; only fields sent are changed |

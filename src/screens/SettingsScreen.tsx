@@ -11,7 +11,7 @@ import type { RootStackParamList } from '../navigation/AppNavigator';
 import { colors } from '../theme';
 
 export default function SettingsScreen() {
-  const { quality, setQuality, qualityAuto, shareUsage, setShareUsage, backupPhotos, setBackupPhotos } = useSettings();
+  const { quality, setQuality, qualityAuto, shareUsage, setShareUsage, photoModels, setPhotoModels, backupPhotos, setBackupPhotos } = useSettings();
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16 }}>
@@ -20,6 +20,12 @@ export default function SettingsScreen() {
       <View style={s.row}>
         <Button label={t('settings.standard')} variant={quality === 'standard' ? 'solid' : 'outline'} onPress={() => setQuality('standard')} style={s.flex} />
         <Button label={t('settings.high')} variant={quality === 'high' ? 'solid' : 'outline'} onPress={() => setQuality('high')} style={s.flex} />
+      </View>
+      <Text style={s.h}>{t('settings.photoModels')}</Text>
+      <Text style={s.p}>{t('settings.photoModelsHint')}</Text>
+      <View style={[s.row, { alignItems: 'center' }]}>
+        <Text style={[s.p, { flex: 1, marginBottom: 0 }]}>{t('settings.photoModels')}</Text>
+        <Switch accessibilityLabel={t('settings.photoModels')} value={photoModels} onValueChange={setPhotoModels} />
       </View>
 
       <Text style={s.h}>{t('settings.yourRoom')}</Text>

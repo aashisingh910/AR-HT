@@ -4,10 +4,14 @@ import { hangOnWall, type Wall } from '../../utils/wall';
 import { track } from '../../services/events';
 import { MAX_PIECES } from '../../utils/perf';
 import { isWallOnly, snap, type Vec3 } from './shared';
+import { faceToward, floorHeight, freeSpot } from '../../utils/geometry';
+import { getFurniture } from '../../data/furniture';
 import type { PlacedItem, Product } from '../../types/furniture';
 
 interface Args {
   hit: { current: Vec3 | null };
+  /** Phone position, so a new piece is turned to face the person placing it. */
+  camera?: { current: Vec3 | null };
   items: PlacedItem[];
   commit: (next: PlacedItem[]) => void;
   product?: Product;
@@ -18,7 +22,7 @@ interface Args {
 }
 
 /** Placing one piece at the aim dot (floor or wall), and the actions on the selected piece. */
-export function usePlacement({ hit, items, commit, product, wall, selected, setSelectedId, isSuggested }: Args) {
+export function usePlacement({ hit, camera, items, commit, product, wall, selected, setSelectedId, isSuggested }: Args) {
   /** Returns true when a piece was placed. */
   const placePiece = (): boolean => {
     const at = hit.current;
@@ -32,7 +36,11 @@ export function usePlacement({ hit, items, commit, product, wall, selected, setS
       setSelectedId(stamp); track('wall_piece_hung', { id: product.id });
       return true;
     }
-    commit([...items, { uid: stamp, productId: product.id, position: [snap(at[0]), at[1], snap(at[2])], rotationY: 0, scale: 1 }]);
+    // Same floor height as the pieces already down; facing the phone; moved to the nearest free spot if it would overlap.
+    const floor = items.filter((i) => !isWallOnly(getFurniture(i.productId)));
+    const aimed: Vec3 = [snap(at[0]), floorHeight(floor, at[1]), snap(at[2])];
+    const draft: PlacedItem = { uid: stamp, productId: product.id, position: aimed, rotationY: camera?.current ? faceToward(aimed, camera.current) : 0, scale: 1 };
+    commit([...items, { ...draft, position: freeSpot(draft, product, floor, getFurniture) }]);
     setSelectedId(stamp);
     track('piece_placed', { id: product.id });
     if (isSuggested(product.id)) track('rec_placed', { id: product.id });
@@ -41,7 +49,10 @@ export function usePlacement({ hit, items, commit, product, wall, selected, setS
   const duplicate = () => {
     if (!selected) return;
     if (items.length >= MAX_PIECES) { Alert.alert(t('usePlacement.thatIsALot'), t('placement.limitShort', { max: MAX_PIECES })); return; }
-    const copy: PlacedItem = { ...selected, uid: String(Date.now()), position: [selected.position[0] + 0.3, selected.position[1], selected.position[2] + 0.3] };
+    const p = getFurniture(selected.productId);
+    const draft: PlacedItem = { ...selected, uid: String(Date.now()) };
+    // the copy goes right next to the original instead of 30 cm into it
+    const copy: PlacedItem = { ...draft, position: p && !isWallOnly(p) ? freeSpot(draft, p, items.filter((i) => !isWallOnly(getFurniture(i.productId))), getFurniture, 3) : [selected.position[0] + 0.3, selected.position[1], selected.position[2] + 0.3] };
     commit([...items, copy]); setSelectedId(copy.uid);
   };
   const remove = () => { if (!selected) return; track('piece_removed', { id: selected.productId }); commit(items.filter((i) => i.uid !== selected.uid)); setSelectedId(null); };

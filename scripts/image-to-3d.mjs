@@ -14,7 +14,7 @@
 // existing files are never overwritten. Facing: our convention is front = +z. If a model faces the wrong way use --yaw 90 / 180 / -90 and re-run --normalise.
 import fs from 'node:fs';
 import path from 'node:path';
-import { PROVIDERS, photoFor, pickProducts, waitForModel } from './lib/image3d.mjs';
+import { PROVIDERS, photoFor, pickProducts, retryLocalTask, waitForModel } from './lib/image3d.mjs';
 import { normalise } from './publish-models.mjs';
 
 const args = process.argv.slice(2);
@@ -26,12 +26,12 @@ const catalogue = JSON.parse(fs.readFileSync(CAT, 'utf8'));
 const rooms = JSON.parse(fs.readFileSync('src/data/rooms.json', 'utf8'));
 const byId = new Map(catalogue.map((p) => [p.id, p]));
 const tasks = fs.existsSync(TASKS) ? JSON.parse(fs.readFileSync(TASKS, 'utf8')) : {};
-const save = () => fs.writeFileSync(TASKS, JSON.stringify(tasks, null, 1));
+const save = () => { fs.writeFileSync(`${TASKS}.part`, JSON.stringify(tasks, null, 1)); fs.renameSync(`${TASKS}.part`, TASKS); };
 const yaw = Number(opt('yaw', 0));
 fs.mkdirSync(RAW, { recursive: true }); fs.mkdirSync(OUT, { recursive: true });
 
 async function check(p) {
-  const r = await normalise(path.join(RAW, `${p.id}.glb`), path.join(OUT, `${p.id}.glb`), p.dimensionsCm, yaw, { auto: true });
+  const r = await normalise(path.join(RAW, `${p.id}.glb`), path.join(OUT, `${p.id}.glb`), p.dimensionsCm, yaw, { auto: true, role: p.role });
   console.log(`${r.issues.length ? 'REVIEW' : 'OK    '} ${p.id}  ${r.w.toFixed(0)}x${r.d.toFixed(0)}cm vs ${p.dimensionsCm.w}x${p.dimensionsCm.d}  ${r.mb.toFixed(1)}MB  stretch ${r.stretch.toFixed(2)}x  ${r.issues.join('; ')}`);
   return r;
 }
@@ -41,14 +41,18 @@ if (flag('normalise')) {
   process.exit(0);
 }
 
+const providerName = opt('provider', 'meshy');
 const ids = opt('ids', '');
-const picked = ids ? ids.split(',').map((i) => byId.get(i.trim())).filter(Boolean) : pickProducts(catalogue, rooms, Number(opt('next', 5)), new Set(Object.keys(tasks).filter((k) => fs.existsSync(path.join(RAW, `${k}.glb`)))));
+// Skip products already generated in an earlier run and products that ship with a bundled model (assets/models/<id>.glb).
+const bundled = fs.existsSync('assets/models') ? fs.readdirSync('assets/models').filter((f) => f.endsWith('.glb')).map((f) => f.replace(/\.glb$/, '')) : [];
+const skip = new Set([...Object.keys(tasks).filter((k) => fs.existsSync(path.join(RAW, `${k}.glb`))), ...bundled]);
+const picked = ids ? ids.split(',').map((i) => byId.get(i.trim())).filter(Boolean) : pickProducts(catalogue, rooms, Number(opt('next', 5)), skip);
 if (!picked.length) { console.log('Nothing to do (no matching products without a model).'); process.exit(0); }
-console.log(`Plan: ${picked.length} product(s) -> ${picked.length} image-to-3D task(s) on ${opt('provider', 'meshy')}`);
+// Leading newline: a resumed run appends to the log right after the stopped run's unfinished progress line.
+console.log(`\nPlan: ${picked.length} product(s) -> ${picked.length} image-to-3D task(s) on ${providerName}`);
 for (const p of picked) console.log(`  ${p.id}  ${p.name}  ${p.dimensionsCm.w}x${p.dimensionsCm.d}x${p.dimensionsCm.h}cm${fs.existsSync(path.join(RAW, `${p.id}.glb`)) ? '  (file exists: will only re-check)' : ''}`);
 if (!flag('yes')) { console.log(`\nDry run. Add --yes to generate${providerName === 'meshy' ? ' (this uses your service credits)' : ' (runs on your own GPU via the local ml-service)'}.`); process.exit(0); }
 
-const providerName = opt('provider', 'meshy');
 const make = PROVIDERS[providerName];
 if (!make) { console.error(`Unknown provider. Available: ${Object.keys(PROVIDERS).join(', ')}`); process.exit(1); }
 const apiKey = process.env.MESHY_API_KEY;
@@ -64,18 +68,28 @@ for (const p of picked) {
       if (!t.taskId) { t.taskId = await provider.create(photoFor(p)); t.provider = provider.name; t.createdAt = Date.now(); save(); console.log(`started ${p.id} (task ${t.taskId})`); }
       let url;
       try {
-        url = await waitForModel(provider, t.taskId, { onProgress: (s) => process.stdout.write(`\r  ${p.id}: ${s.status}${s.progress != null ? ` ${s.progress}%` : ''}   `) });
+        url = await retryLocalTask({
+          provider,
+          taskId: t.taskId,
+          createTask: async () => {
+            const nextTaskId = await provider.create(photoFor(p));
+            tasks[p.id] = { taskId: nextTaskId, provider: provider.name, createdAt: Date.now() };
+            save();
+            return nextTaskId;
+          },
+          waitForTask: async (currentTaskId) => await waitForModel(provider, currentTaskId, { onProgress: (s) => process.stdout.write(`\r  ${p.id}: ${s.status}${s.progress != null ? ` ${s.progress}%` : ''}   `) }),
+          onRetry: ({ staleTaskId, newTaskId }) => console.log(`\n  stale local task ${staleTaskId} for ${p.id}; retrying fresh as ${newTaskId}`),
+        });
       } catch (e) {
-        // The local ml-service keeps jobs in memory only: if it was restarted (e.g. after a power-off) mid-job,
-        // our saved task id is now unknown to it (404) and would fail forever otherwise. Drop it so the NEXT
-        // run of this script starts that one product fresh, instead of needing a manual .image3d-tasks.json edit.
-        // Already-finished products are unaffected: they are skipped above via the raw .glb file existing on disk.
+        // If the local service was restarted mid-run, we already retried a fresh task in-line. Other failures are real errors.
         if (e.status === 404 && provider.name === 'local') { delete tasks[p.id]; save(); }
         throw e;
       }
       const res = await fetch(url);
       if (!res.ok) throw new Error(`download failed (${res.status})`);
-      fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+      // Write then rename: a power cut mid-write leaves only a .part file, never a truncated .glb that would count as done.
+      fs.writeFileSync(`${file}.part`, Buffer.from(await res.arrayBuffer()));
+      fs.renameSync(`${file}.part`, file);
       console.log(`\n  saved ${file}`);
     }
     (await check(p)).issues.length ? review++ : ok++;

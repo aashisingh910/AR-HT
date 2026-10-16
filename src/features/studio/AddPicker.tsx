@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { FlatList } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ProductCard } from '../../components/ProductCard';
 import { ProductPicker } from '../ar/components/ProductPicker';
 import { getTheme, themeScore, type Kind } from '../../studio/studio';

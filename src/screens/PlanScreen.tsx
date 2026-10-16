@@ -15,7 +15,7 @@ import { toRoomType } from '../data/rooms';
 import { recommend } from '../recommend/engine';
 import { collidingUids } from '../utils/geometry';
 import { narrowUids } from '../utils/clearance';
-import { describePiece, toPlaced, wallDistances } from '../plan/editor';
+import { toPlaced, wallDistances } from '../plan/editor';
 import { useRooms } from '../store/roomStore';
 import { useSettings } from '../store/settingsStore';
 import { colors } from '../theme';

@@ -16,10 +16,10 @@ module.exports = ({ config }) => {
         provider: cloud ? 'reactvision' : 'none',
         ...(cloud ? { rvApiKey: key, rvProjectId: project } : {}),
         ios: {
-          cameraUsagePermission: 'HomeTown uses the camera to place furniture in your room. Camera images stay on your phone.',
+          cameraUsagePermission: 'HomeTown uses the camera to place furniture in your room. AR camera images stay on your phone.',
           savePhotosPermission: 'HomeTown saves the photos and videos you take of your room design to Photos.',
-          // The AR library adds these two keys by default. We never read your library or record sound, and the text says so.
-          photosPermission: 'HomeTown only saves photos to your library. It never reads your photos.',
+          // The AR library adds these two keys by default. We read one photo only when the user picks it for Redesign my room, and never record sound.
+          photosPermission: 'HomeTown opens one room photo you choose for Redesign my room. It never reads other photos.',
           microphoneUsagePermission: 'HomeTown records silent videos of your room design. It does not use the microphone.',
         },
       }];

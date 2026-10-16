@@ -26,11 +26,14 @@ import { createStorage } from './lib/storage.mjs';
 import { adminToolsRouter } from './routes/adminTools.mjs';
 import { roomsRouter } from './routes/rooms.mjs';
 import { adminRouter } from './routes/admin.mjs';
+import { roomAiRouter } from './routes/roomAi.mjs';
+import os from 'node:os';
 
 export function createApp({
   db, jwtSecret, uploadDir, publicUrl = '', cdnBaseUrl = '', corsOrigins = [], logLevel = 'silent',
   authLimit = 30, eventLimit = 60, globalLimit = 600, layoutLimits = { perMinute: 5, perDay: 20 },
   anthropicKey = '', layoutModel = 'claude-sonnet-5-5', fetchImpl = fetch,
+  mlServiceUrl = '', roomAiDir = path.join(os.tmpdir(), 'hometown-room-ai'), roomAiLimits = { perMinute: 2, perDay: 10 },
   share: shareCfg = {}, mail = {}, onError = () => {}, googleClientIds = [], appleAudiences = [], verifyGoogle = googleVerifier(googleClientIds), verifyApple = appleVerifier(appleAudiences),
 }) {
   const app = express();
@@ -79,6 +82,7 @@ export function createApp({
   mount(v1, '/designs', '/v1', designsRouter(ctx));
   mount(v1, '/events', '/v1', eventsRouter(ctx));
   mount(v1, '/layout', '/v1', layoutRouter(ctx));
+  mount(v1, '/room-ai', '/v1', roomAiRouter({ ...ctx, mlServiceUrl, roomAiDir, roomAiLimits }));
   mount(v1, '/rooms', '/v1', roomsRouter(ctx));
   mount(v1, '/admin', '/v1', adminRouter(ctx));
   mount(v1, '/admin', '/v1', adminToolsRouter(ctx));

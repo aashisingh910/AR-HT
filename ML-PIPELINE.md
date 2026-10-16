@@ -1,5 +1,5 @@
 # ML pipeline — commands reference
-
+powershell -ExecutionPolicy Bypass -File .\generate-real-models.ps1 -Count 20
 Real, locally-run GPU models that turn real catalogue photos into 3D models, and real room
 photos into an AI-estimated layout + restyled preview. See `server/ml-service/README.md` for
 the full design writeup; this file is the command cheat-sheet.
@@ -8,6 +8,23 @@ the full design writeup; this file is the command cheat-sheet.
 Running a command below downloads each model's published weights from Hugging Face the first
 time it's used (several GB total, cached after that), then runs them against the real photo(s)
 you give it. There is no training step in this project.
+
+## The architecture, and where each stage lives
+
+| Stage | What | Code | Run it |
+|---|---|---|---|
+| 1. Furniture → 3D | catalogue photo → SAM 2.1 cut-out → TripoSR or Hunyuan3D-2mv → GLB | `server/ml-service/pipeline/stage1_furniture3d.py`, `scripts/image-to-3d.mjs` | `node scripts/image-to-3d.mjs --provider local --next 483 --yes` (resumable; log with `> models/batch-triposr.log`) |
+| 1b. Benchmark | the same products through both models, same checks, GPU run time | `scripts/benchmark-models.mjs` | `node scripts/benchmark-models.mjs` → `models/bench/report.md`, `models/bench/compare.html` |
+| 2. Product-ready GLB | upright, scaled to the listed W×D×H, origin at floor centre, front +z, ≤ 8 MB, product id kept, OK/REVIEW | `scripts/publish-models.mjs` (normalise), `scripts/review-models.mjs`, `scripts/bundle-models.mjs` | review: `node scripts/review-models.mjs` then `npx http-server models -p 8079` → `/review.html`; bundle: `node scripts/bundle-models.mjs [--accept id,id]` |
+| 3. Room understanding | Depth Anything V2 + Grounding DINO + SAM 2.1 → objects, relative depth, floor line | `pipeline/stage2_room_understanding.py` → API `POST /v1/room-ai/jobs` (kind `understand`) → app "Redesign my room" → "Shop <category>" | app, Rooms tab → Redesign my room |
+| 4. Room redesign | SDXL + depth ControlNet → restyled picture (inspiration only; real products are placed true-size in AR) | `pipeline/stage3_redesign.py` → API kind `redesign` → app | app, Rooms tab → Redesign my room → a style |
+
+Stages 3–4 send the one room photo the user picks, after a consent switch; the API deletes it once the ml-service has read it
+(see CLAUDE.md "Camera frames"). To switch them on: start the ml-service, set `ML_SERVICE_URL=http://127.0.0.1:8077` in `server/.env`,
+and build the app with `EXPO_PUBLIC_API_URL` pointing at the API (EAS profile `preview-lan` for a phone on the same network).
+
+Hunyuan3D-2mv note: its published DINOv2 encoder weights use an older `transformers` layout; `_remap_dinov2_conditioner_checkpoint`
+in stage1 renames them on load (same approach as TripoSR's). Hunyuan output is shape-only (no colour) in this project.
 
 ## The one command
 

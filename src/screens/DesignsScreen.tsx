@@ -16,6 +16,7 @@ import { runSync } from '../services/sync';
 import { VerifyBanner } from '../components/AccountSection';
 import { RoomPlan } from '../components/RoomPlan';
 import { ProductImage } from '../components/ProductImage';
+import { Estimate, PriceTag } from '../components/Price';
 import { shareDesign } from '../services/share';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
@@ -59,7 +60,7 @@ export default function DesignsScreen() {
       ListFooterComponent={
         <View>
           <Text style={s.section}>{t('designs.savedFurniture')}</Text>
-          {wish.length === 0 ? <Text style={s.empty2}>{t('designs.tapTheHeartOn')}</Text> : null}
+          {wish.length === 0 ? <Text style={s.empty2}>{t('designs.tapTheHeartOn')}</Text> : <Estimate pieces={wish.map((w) => ({ productId: w.id }))} style={{ marginBottom: 8 }} />}
           {wish.map((w) => {
             const p = getFurniture(w.id);
             if (!p) return null;
@@ -68,6 +69,7 @@ export default function DesignsScreen() {
                 <ProductImage uri={p.images[0]} blurhash={p.blurhash} style={s.wishImg} />
                 <View style={{ flex: 1, paddingHorizontal: 10 }}>
                   <Text style={s.name} numberOfLines={2}>{p.name}</Text>
+                  <PriceTag product={p} />
                   <Text style={s.meta}>{sizeLabel(p)}</Text>
                 </View>
                 <HeartButton saved size={18} onPress={() => toggleWish(p.id)} />
@@ -93,6 +95,7 @@ export default function DesignsScreen() {
             </View>
           )}
           <Text style={s.meta}>{d.items.length} pieces · {d.createdAt ? new Date(d.createdAt).toLocaleDateString() : 'curated by HomeTown'}</Text>
+          <Estimate pieces={d.items} style={{ marginTop: 0, marginBottom: 6 }} />
           <View style={s.row}>
             <Button label={t('designs.plan')} onPress={() => (noAR ? nav.navigate('Plan', { designId: d.id }) : nav.navigate('AR', { designId: d.id }))} style={s.flex} />
             {!d.id.startsWith(ROOM_ID_PREFIX) && <Button label={t('designs.rename')} variant="outline" onPress={() => { setDraft(d.name); setEditing(d.id); }} style={s.flex} />}

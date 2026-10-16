@@ -2,12 +2,14 @@ import { t } from '../i18n';
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { sizeLabel, useCategories, useProducts } from '../data/furniture';
 import { useRooms } from '../store/roomStore';
 import { recommend } from '../recommend/engine';
 import { HeartButton } from '../components/ui';
+import { PriceTag } from '../components/Price';
+import { rupees } from '../studio/studio';
 import { ProductImage } from '../components/ProductImage';
 import { useWishlist } from '../store/wishlistStore';
 import { isSaved } from '../utils/wishlist';
@@ -27,7 +29,11 @@ export default function LibraryScreen() {
   const wish = useWishlist((w) => w.items);
   const toggleWish = useWishlist((w) => w.toggle);
   const [q, setQ] = useState('');
-  const [cat, setCat] = useState<string | null>(null);
+  // Other screens can open the library on a category (e.g. "Shop Sofa" from Redesign my room).
+  const wanted = (useRoute().params as { category?: string } | undefined)?.category;
+  const [cat, setCat] = useState<string | null>(wanted ?? null);
+  const [applied, setApplied] = useState(wanted); // adjust state while rendering when the param changes (no effect, no extra render)
+  if (wanted !== applied) { setApplied(wanted); if (wanted) setCat(wanted); }
   const [arOnly, setArOnly] = useState(false);
   const data = useMemo(
     () => items.filter((f) => (!cat || f.category === cat) && (!arOnly || !!f.model3D || !!f.proxy) && f.name.toLowerCase().includes(q.trim().toLowerCase())),
@@ -51,6 +57,7 @@ export default function LibraryScreen() {
                   <Pressable key={r.product.id} accessibilityLabel={`${r.product.name}. ${r.reasons[0]}`} style={s.startCard} onPress={() => nav.navigate('Item', { id: r.product.id })}>
                     <ProductImage uri={r.product.images[0]} blurhash={r.product.blurhash} style={s.startImg} />
                     <Text style={s.startName} numberOfLines={2}>{r.product.name}</Text>
+                    <View style={s.priceBox}><PriceTag product={r.product} /></View>
                     <Text style={s.size}>{sizeLabel(r.product)}</Text>
                   </Pressable>
                 ))}
@@ -73,10 +80,11 @@ export default function LibraryScreen() {
       }
       ListEmptyComponent={<Text style={s.empty}>{t('library.noFurnitureMatchesClear')}</Text>}
       renderItem={({ item }) => (
-        <Pressable accessibilityRole="button" accessibilityLabel={`${item.name}, ${sizeLabel(item)}`} style={s.card} onPress={() => nav.navigate('Item', { id: item.id })}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${item.name}, ${item.priceInr ? `${rupees(item.priceInr)}, ` : ''}${sizeLabel(item)}`} style={s.card} onPress={() => nav.navigate('Item', { id: item.id })}>
           <ProductImage uri={item.images[0]} blurhash={item.blurhash} style={s.img} />
           <View style={s.heart}><HeartButton size={18} saved={isSaved(wish, item.id)} onPress={() => { if (toggleWish(item.id)) track('wishlist_added', { id: item.id }); }} /></View>
           <Text style={s.name} numberOfLines={2}>{item.name}</Text>
+          <View style={s.priceBox}><PriceTag product={item} /></View>
           <Text style={s.size}>{sizeLabel(item)}</Text>
           <Text style={[s.badge, (item.model3D || item.proxy) && { color: colors.accent }]}>{item.demo ? t('library.badgeDemo') : item.model3D ? t('library.badgeReady') : item.proxy ? t('library.badgeShape') : t('library.badgeReview')}</Text>
         </Pressable>
@@ -104,4 +112,5 @@ const s = StyleSheet.create({
   img: { width: '100%', height: 130, backgroundColor: colors.line },
   name: { color: colors.ink, fontWeight: '600', padding: 10, paddingBottom: 2 },
   size: { color: colors.muted, fontSize: 12, paddingHorizontal: 10, paddingBottom: 10 },
+  priceBox: { paddingHorizontal: 10, paddingBottom: 2 },
 });

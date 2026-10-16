@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, act } from '@testing-library/react-native';
+import { fireEvent, render, screen, act, waitFor } from '@testing-library/react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LibraryScreen from '../src/screens/LibraryScreen';
@@ -27,7 +27,7 @@ const placeableSofa = () => products().find((p) => p.role === 'sofa' && !p.sizeR
 beforeEach(() => {
   useRooms.setState({ designs: [], roomType: 'Living room' });
   useWishlist.setState({ items: [] });
-  useSettings.setState({ onboarded: false, scanned: null, preset: 'unknown', arSupported: true });
+  useSettings.setState({ onboarded: false, scanned: null, preset: 'unknown', arSupported: true, photoModels: false });
 });
 
 describe('Library', () => {
@@ -41,6 +41,14 @@ describe('Library', () => {
     await fireEvent.changeText(screen.getByLabelText(t('library.searchFurniture')), placeableSofa().name.split(' ')[0]);
     const n = products().filter((p) => p.name.toLowerCase().includes(placeableSofa().name.split(' ')[0].toLowerCase())).length;
     expect(screen.getByText(`${n} pieces`)).toBeTruthy();
+  });
+
+  it('shows every product price on the grid', async () => {
+    await renderScreen(LibraryScreen);
+    const priced = placeableSofa();
+    await fireEvent.changeText(screen.getByLabelText(t('library.searchFurniture')), priced.name);
+    expect(priced.priceInr).toBeTruthy();
+    expect(screen.getAllByText(`₹${priced.priceInr!.toLocaleString('en-IN')}`).length).toBeGreaterThan(0);
   });
 
   it('filters by category and selects the chip', async () => {
@@ -184,5 +192,32 @@ describe('360 view', () => {
     expect(screen.getByLabelText(t('p360.labelPhotos'))).toBeTruthy();
     await fireEvent.press(screen.getByLabelText(t('p360.labelPhotos')));
     expect(screen.getByLabelText(t('p360.photoLabel', { name: item.name, n: 1, total: item.images.length }))).toBeTruthy();
+  });
+
+  it('uses the proxy by default and the bundled photo model when enabled', async () => {
+    const { Product360 } = require('../src/components/Product360');
+    const { Asset } = require('expo-asset');
+    const { File } = require('expo-file-system');
+    const product = products().find((p) => p.id === 'icon-velvet-2-seater-sofa-beige')!;
+    const item = { ...product, model3D: { url: '', version: 1, unit: 'm' as const, bundled: true } };
+    const assetSpy = jest.spyOn(Asset, 'fromModule').mockImplementation(() => {
+      const model = useSettings.getState().photoModels ? 'generated' : 'proxy';
+      return { downloadAsync: async () => {}, localUri: `file:///mock-${model}.glb`, uri: `file:///mock-${model}.glb` };
+    });
+    const fileSpy = jest.spyOn(File.prototype, 'base64').mockImplementation(async function (this: { uri: string }) {
+      return this.uri.includes('generated') ? 'generated-model' : 'proxy-model';
+    });
+    const asset = await render(<Product360 item={item} />);
+    const viewer = screen.getByLabelText(t('product360.rotating3dViewOf'));
+    await waitFor(() => expect(viewer.props.source.html).toContain('base64,proxy-model'));
+    await fireEvent(viewer, 'message', { nativeEvent: { data: 'ready' } });
+    expect(screen.getByText(t('p360.shape'))).toBeTruthy();
+
+    await act(async () => { useSettings.getState().setPhotoModels(true); });
+    await waitFor(() => expect(screen.getByLabelText(t('product360.rotating3dViewOf')).props.source.html).toContain('base64,generated-model'));
+    await waitFor(() => expect(screen.getByText(t('p360.drag'))).toBeTruthy());
+    await asset.unmount();
+    assetSpy.mockRestore();
+    fileSpy.mockRestore();
   });
 });

@@ -26,6 +26,9 @@ def health():
 
 store = JobStore()
 job_queue = JobQueue(store)
+# Preload the room-AI models into RAM now (runs on the worker thread, before any other job), so a user's first
+# "Redesign my room" takes seconds instead of waiting for ~7 GB to load from disk.
+job_queue.submit(Job(id=f"warmup-{uuid.uuid4()}", kind="warmup", payload={}))
 
 STATUS_TO_MESHY = {"pending": "PENDING", "running": "IN_PROGRESS", "done": "SUCCEEDED", "failed": "FAILED"}
 
@@ -57,6 +60,7 @@ def get_image_to_3d(task_id: str):
     body = {"status": STATUS_TO_MESHY[job.status], "progress": job.progress}
     if job.status == "done":
         body["model_urls"] = {"glb": f"http://127.0.0.1:8077{job.result['glb_url']}"}
+        body["elapsed_s"] = job.result.get("elapsed_s")
     if job.status == "failed":
         body["task_error"] = {"message": job.error}
     return body
@@ -102,6 +106,12 @@ def get_job(task_id: str):
         "result": job.result,
         "error": job.error,
     }
+
+
+@app.delete("/v1/jobs/{task_id}", status_code=204)
+def delete_job(task_id: str):
+    if not store.discard(task_id):
+        raise HTTPException(404, "unknown task id")
 
 
 @app.get("/files/{filename}")

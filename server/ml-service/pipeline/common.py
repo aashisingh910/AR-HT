@@ -47,13 +47,20 @@ def download_image(url_or_path: str):
     from PIL import Image
 
     if url_or_path.startswith(("http://", "https://")):
-        resp = requests.get(url_or_path, timeout=60)
-        resp.raise_for_status()
-        return Image.open(io.BytesIO(resp.content)).convert("RGB")
+        # The product CDN sometimes drops a connection: retry 4 times with back-off before failing the job.
+        for attempt in range(5):
+            try:
+                resp = requests.get(url_or_path, timeout=60)
+                resp.raise_for_status()
+                return Image.open(io.BytesIO(resp.content)).convert("RGB")
+            except (requests.ConnectionError, requests.Timeout) as exc:
+                if attempt == 4:
+                    raise RuntimeError(f"could not download the photo after 5 tries: {exc}") from exc
+                time.sleep(2 ** attempt)
     return Image.open(url_or_path).convert("RGB")
 
 
-JobKind = Literal["furniture3d", "room_understanding", "redesign"]
+JobKind = Literal["furniture3d", "room_understanding", "redesign", "warmup"]
 JobStatus = Literal["pending", "running", "done", "failed"]
 
 
@@ -67,3 +74,4 @@ class Job:
     result: Optional[dict] = None
     error: Optional[str] = None
     created_at: float = field(default_factory=time.time)
+    discard: bool = False  # set by JobStore.discard while the job is still running: delete its files when it ends

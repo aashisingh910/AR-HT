@@ -128,7 +128,9 @@
     "shareAnonymousUsageWhich": "Share anonymous usage (which screens and features are used: ids and numbers only, never camera images or room shapes).",
     "autoChose": "We chose {{quality}} for this phone.",
     "backupPhotos": "Back up design photos: a picture of your room is uploaded with each saved design. Off by default. A design's photo is also uploaded when you share it.",
-    "backupPhotosLabel": "Back up design photos"
+    "backupPhotosLabel": "Back up design photos",
+    "photoModels": "Photo 3D models (beta)",
+    "photoModelsHint": "Shapes made from product photos. Less accurate than the standard shapes."
   },
   "sharedDesign": {
     "loadingSharedDesign": "Loading shared design",
@@ -341,7 +343,8 @@
     "verify": "Verify email",
     "forgot": "Forgot password",
     "reset": "New password",
-    "room": "Room"
+    "room": "Room",
+    "roomAi": "Redesign my room"
   },
   "ar": {
     "qualityDropped": "The camera view was slowing down, so AR quality was switched to Standard.",
@@ -383,7 +386,10 @@
     "designARoom": "Design a room",
     "designSub": "Pick a room and a theme. We fit a matching set of HomeTown furniture into it and keep a running budget.",
     "designKind": "Design a {{room}}",
-    "sampleRooms": "Sample rooms"
+    "sampleRooms": "Sample rooms",
+    "aiTitle": "Redesign my room with AI",
+    "aiSub": "Take one photo of your room. See which furniture we spot, or an AI restyle for ideas.",
+    "aiOpen": "Open Redesign my room"
   },
   "shared": {
     "openFailed": "Could not open this link.",
@@ -510,5 +516,52 @@
     "piecesLine_other": "{{count}} pieces",
     "removeOne": "Remove one {{name}}",
     "addOne": "Add one more {{name}}"
+  },
+  "roomAi": {
+    "title": "Redesign my room",
+    "sub": "One photo of your room: we spot the furniture in it, or show an AI restyle for ideas. Real HomeTown pieces are still placed at true size in AR.",
+    "privacyTitle": "Your photo",
+    "privacyBody": "This photo is sent to our AI service to be analysed. It is shrunk and location data is removed first. It is deleted as soon as the AI has read it, and the results are deleted when you leave this screen. Nothing else from your camera ever leaves your phone.",
+    "agree": "I agree to send this one photo",
+    "takePhoto": "Take a photo",
+    "choosePhoto": "Choose a photo",
+    "yourPhoto": "The room photo you picked",
+    "findFurniture": "Find furniture in my room",
+    "restyle": "Or restyle it",
+    "styles": {
+      "minimal": "Minimal",
+      "warm": "Warm",
+      "modern": "Modern",
+      "classic": "Classic"
+    },
+    "redesign": "Show an AI restyle",
+    "redesignNote": "A restyle takes a few seconds. It is a picture for ideas, not exact products or sizes.",
+    "working": "Working on it… {{pct}}%",
+    "failed": "The AI could not process this photo. Try again.",
+    "cameraDenied": "Camera permission is off. Allow it in Settings, or choose a photo instead.",
+    "weSee": "We can see:",
+    "nothingFound": "We could not spot any furniture. Try a wider, brighter photo.",
+    "seen_one": "{{count}} {{label}}",
+    "seen_other": "{{count}} × {{label}}",
+    "shop": "Shop {{category}}",
+    "redesigned": "AI restyle of your room",
+    "inspiration": "AI picture for ideas only. Use AR to place real HomeTown furniture at true size.",
+    "placeReal": "Place real furniture in AR",
+    "deleteNow": "Delete photo and results now",
+    "offline": "Redesign my room needs the HomeTown server. It is not set up in this version of the app.",
+    "signIn": "Sign in to use Redesign my room."
+  },
+  "price": {
+    "onRequest": "Price on request",
+    "saleLabel": "{{price}}, was {{was}}, {{off}} percent off",
+    "off": "{{off}}% off",
+    "perSet": "for a set of {{n}}",
+    "estimate_one": "Estimated total for {{count}} piece",
+    "estimate_other": "Estimated total for {{count}} pieces",
+    "estimateLabel": "Estimated total {{total}} for {{count}} pieces",
+    "unpriced_one": "{{count}} piece has no price yet and is not counted",
+    "unpriced_other": "{{count}} pieces have no price yet and are not counted",
+    "reference": "HomeTown price. Final price and offers on hometown.in.",
+    "from": "from {{price}}"
   }
 }

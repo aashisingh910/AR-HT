@@ -169,14 +169,51 @@ def _hy3dgen_shapegen_module():
     return Hunyuan3DDiTFlowMatchingPipeline
 
 
+def _remap_dinov2_conditioner_checkpoint(state_dict: dict) -> dict:
+    """Same problem as `_remap_image_tokenizer_checkpoint`, for Hunyuan3D-2mv's DINOv2 image
+    encoder: the published weights use the older `transformers` Dinov2 layout
+    (`attention.attention.query/key/value`, `attention.output.dense`, SwiGLU `mlp.weights_in/out`),
+    the installed version uses `attention.q_proj/k_proj/v_proj/o_proj` and
+    `mlp.gate_proj/up_proj/down_proj` (confirmed from the real load's missing/unexpected key lists).
+    The old SwiGLU computed `silu(x1) * x2` from `weights_in(x).chunk(2)`; the new one computes
+    `silu(gate_proj(x)) * up_proj(x)`, so the first half of `weights_in` is `gate_proj`, the second `up_proj`.
+    """
+    renamed = {}
+    for key, value in state_dict.items():
+        if "main_image_encoder.model.encoder.layer." not in key:
+            renamed[key] = value
+            continue
+        if ".mlp.weights_in." in key:
+            gate, up = value.chunk(2, dim=0)
+            renamed[key.replace(".mlp.weights_in.", ".mlp.gate_proj.")] = gate.contiguous()
+            renamed[key.replace(".mlp.weights_in.", ".mlp.up_proj.")] = up.contiguous()
+            continue
+        new_key = key.replace("attention.attention.query", "attention.q_proj")
+        new_key = new_key.replace("attention.attention.key", "attention.k_proj")
+        new_key = new_key.replace("attention.attention.value", "attention.v_proj")
+        new_key = new_key.replace("attention.output.dense", "attention.o_proj")
+        new_key = new_key.replace(".mlp.weights_out.", ".mlp.down_proj.")
+        renamed[new_key] = value
+    return renamed
+
+
 def _load_hunyuan3d_mv():
+    import safetensors.torch
+
     Pipeline = _hy3dgen_shapegen_module()
-    return Pipeline.from_pretrained(
-        "tencent/Hunyuan3D-2mv",
-        subfolder="hunyuan3d-dit-v2-mv",
-        use_safetensors=True,
-        device=common.device(),
-    )
+    # hy3dgen reads the checkpoint with safetensors.torch.load_file inside from_pretrained; remap the
+    # encoder keys on the way through rather than patching the vendored source.
+    original_load = safetensors.torch.load_file
+    safetensors.torch.load_file = lambda *a, **kw: _remap_dinov2_conditioner_checkpoint(original_load(*a, **kw))
+    try:
+        return Pipeline.from_pretrained(
+            "tencent/Hunyuan3D-2mv",
+            subfolder="hunyuan3d-dit-v2-mv",
+            use_safetensors=True,
+            device=common.device(),
+        )
+    finally:
+        safetensors.torch.load_file = original_load
 
 
 def _reconstruct_mesh_hunyuan3d_mv(views: dict[str, Image.Image], progress):

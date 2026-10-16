@@ -36,6 +36,10 @@ export default function RoomsScreen() {
       contentContainerStyle={{ padding: 14 }}
       ListHeaderComponent={
         <View>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('rooms.aiOpen')} onPress={() => nav.navigate('RoomRedesign')} style={[s.card, s.ai]}>
+            <Text style={s.aiTitle}>{t('rooms.aiTitle')}</Text>
+            <Text style={s.aiSub}>{t('rooms.aiSub')}</Text>
+          </Pressable>
           <Text style={s.h} accessibilityRole="header">{t('rooms.designARoom')}</Text>
           <Text style={s.sub}>{t('rooms.designSub')}</Text>
           <View style={s.grid}>
@@ -89,4 +93,7 @@ const s = StyleSheet.create({
   name: { fontSize: 17, fontWeight: '700', color: colors.ink, marginTop: 10, alignSelf: 'flex-start' },
   meta: { color: colors.muted, marginTop: 2, alignSelf: 'flex-start' },
   badge: { marginTop: 6, fontWeight: '600', alignSelf: 'flex-start' },
+  ai: { backgroundColor: colors.accent, alignItems: 'flex-start', marginBottom: 16 },
+  aiTitle: { color: colors.accentInk, fontWeight: '800', fontSize: 17 },
+  aiSub: { color: colors.accentInk, marginTop: 4, lineHeight: 19 },
 });

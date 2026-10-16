@@ -62,7 +62,7 @@ export function shareRouter({ db, auth, storage, filesBase, share }) {
     res.set('Cache-Control', 'public, max-age=60').json({
       slug: req.params.slug, name: s.design.name, roomType: s.data.roomType, frame: s.data.frame ?? false, scan: s.data.scan,
       items: s.data.items, thumbnailUrl: s.design.thumbnail_key ? storage.publicUrl(s.design.thumbnail_key) : undefined,
-      products: s.products.map((p) => ({ id: p.id, name: p.name, category: p.category, role: p.role, dimensionsCm: p.dimensionsCm, images: p.images?.slice(0, 1) ?? [], colors: p.colors, retailerUrl: p.retailerUrl })),
+      products: s.products.map((p) => ({ id: p.id, name: p.name, category: p.category, role: p.role, dimensionsCm: p.dimensionsCm, images: p.images?.slice(0, 1) ?? [], colors: p.colors, retailerUrl: p.retailerUrl, priceInr: p.priceInr, compareAtInr: p.compareAtInr, setSize: p.setSize })),
     });
   });
 
@@ -77,17 +77,24 @@ export function shareRouter({ db, auth, storage, filesBase, share }) {
     const count = new Map();
     for (const it of s.data.items) count.set(it.productId, (count.get(it.productId) ?? 0) + 1);
     const thumb = s.design.thumbnail_key ? storage.publicUrl(s.design.thumbnail_key) : null;
+    // Prices are HomeTown's reference prices; pieces sold in sets are counted per set (6 chairs in 2s = 3 sets), like the app's estimate.
+    const rupees = (v) => `₹${Math.round(v).toLocaleString('en-IN')}`;
+    let total = 0;
     const list = [...count].flatMap(([id, n]) => {
       const p = find(id);
       if (!p) return [];
       const d = p.dimensionsCm;
+      const sets = p.setSize ? Math.ceil(n / p.setSize) : n;
+      if (p.priceInr) total += p.priceInr * sets;
+      const price = p.priceInr ? `<br><span class="pr">${rupees(p.priceInr * sets)}</span>${p.compareAtInr > p.priceInr ? ` <s class="m">${rupees(p.compareAtInr * sets)}</s>` : ''}` : '';
       return [`<li class="p">${p.images?.[0] ? `<img src="${esc(p.images[0])}" alt="" width="64" height="64" loading="lazy">` : '<span class="ph"></span>'}
-        <div><strong>${esc(p.name)}${n > 1 ? ` × ${n}` : ''}</strong><br><span class="m">${d.w} × ${d.d} × ${d.h} cm</span>
+        <div><strong>${esc(p.name)}${n > 1 ? ` × ${n}` : ''}</strong>${price}<br><span class="m">${d.w} × ${d.d} × ${d.h} cm</span>
         ${p.retailerUrl ? `<br><a href="${esc(withUtm(p.retailerUrl, 'share-page'))}" rel="noopener">View on HomeTown</a>` : ''}</div></li>`];
     }).join('');
     const desc = `${s.data.items.length} pieces, to scale. Plan the same room in your own space with HomeTown AR.`;
     const body = `${thumb ? `<img class="hero" src="${esc(thumb)}" alt="Photo of the design">` : ''}
       <div class="plan">${svg}</div>
+      ${total ? `<p class="est">Estimated total: <strong>${rupees(total)}</strong><br><span class="m">HomeTown prices. Final price and offers on hometown.in.</span></p>` : ''}
       <h2>Pieces</h2><ul class="list">${list}</ul>
       <p><a class="btn" href="hometownar://d/${esc(req.params.slug)}">Open in the app</a></p>
       ${share.storeLinks}`;
@@ -116,6 +123,6 @@ function page({ title, body, meta = {}, share }) {
 <style>body{font:16px system-ui,sans-serif;margin:0;color:#14211f;background:#f3f5f4}main{max-width:560px;margin:0 auto;padding:20px}
 h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:22px 0 8px}.hero{width:100%;border-radius:12px}.plan{background:#fff;border-radius:12px;padding:10px;margin-top:12px;overflow:auto}
 .list{list-style:none;padding:0;margin:0}.p{display:flex;gap:12px;background:#fff;border-radius:12px;padding:10px;margin-bottom:8px;align-items:center}.p img,.ph{width:64px;height:64px;border-radius:8px;object-fit:cover;background:#dce3e1;flex:none}
-.m{color:#6b7a77;font-size:14px}a{color:#2f6f5e}.btn{display:inline-block;background:#2f6f5e;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:600}footer{color:#6b7a77;font-size:13px;margin-top:24px}</style></head>
+.m{color:#6b7a77;font-size:14px}.pr{color:#2f6f5e;font-weight:800}.est{background:#fff;border-radius:12px;padding:12px;margin-top:12px;font-size:18px}a{color:#2f6f5e}.btn{display:inline-block;background:#2f6f5e;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:600}footer{color:#6b7a77;font-size:13px;margin-top:24px}</style></head>
 <body><main><h1>${esc(title)}</h1><div class="m">HomeTown AR${share?.shortName ? '' : ''}</div>${body}<footer>Shared from the HomeTown AR app. No personal details are on this page.</footer></main></body></html>`;
 }
